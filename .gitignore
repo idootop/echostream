@@ -1,0 +1,9 @@
+# Rust
+/target
+
+# Secret
+.env
+
+# Misc
+.DS_Store
+temp
