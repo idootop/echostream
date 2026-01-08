@@ -27,6 +27,47 @@ EchoStream 特别适用于需要同时处理控制指令和实时数据的场景
 - **远程桌面**: 屏幕共享、输入控制和音频转发
 - **分布式系统**: 节点间通信、数据同步和事件总线
 
+## 项目架构
+
+EchoStream 采用分层架构设计：
+
+```
+Application Layer    ← 用户代码（Handlers, Services, Streams）
+       ↓
+API Layer            ← RPC 框架（Request, Event, Stream Manager）
+       ↓
+Protocol Layer       ← 帧定义、编解码、时间同步协议
+       ↓
+Transport Layer      ← QUIC 连接管理和多路复用
+       ↓
+Discovery Layer      ← mDNS 服务发现（可选）
+```
+
+
+### 核心依赖
+
+- **quinn**: QUIC 协议实现
+- **tokio**: 异步运行时
+- **serde** + **bincode**: 序列化/反序列化
+- **bytes**: 零拷贝字节操作
+- **mdns-sd**: mDNS 服务发现
+- **tracing**: 结构化日志
+
+### 项目结构
+
+```
+echostream/
+├── echostream-core/        # 核心框架
+│   ├── connection/         # QUIC 连接管理
+│   ├── protocol/           # 协议定义和编解码
+│   ├── rpc/                # RPC 框架
+│   └── stream/             # 流管理和时间同步
+├── echostream-discovery/   # 服务发现
+├── echostream-derive/      # 过程宏
+├── echostream-types/       # 公共类型
+└── examples/               # 示例代码
+```
+
 ## 快速开始
 
 > **⚠️ 开发中**: EchoStream 正在积极开发中，API 可能会发生变化。
@@ -105,24 +146,6 @@ async fn main() -> Result<()> {
 }
 ```
 
-## 技术架构
-
-EchoStream 采用分层架构设计：
-
-```
-Application Layer    ← 用户代码（Handlers, Services, Streams）
-       ↓
-API Layer            ← RPC 框架（Request, Event, Stream Manager）
-       ↓
-Protocol Layer       ← 帧定义、编解码、时间同步协议
-       ↓
-Transport Layer      ← QUIC 连接管理和多路复用
-       ↓
-Discovery Layer      ← mDNS 服务发现（可选）
-```
-
-详细架构设计请参阅 [ARCHITECTURE.md](./ARCHITECTURE.md)。
-
 ## 核心概念
 
 ### 1. Request/Response（请求/响应）
@@ -196,96 +219,3 @@ while let Some((data, aligned_time)) = stream.recv_aligned().await {
 }
 ```
 
-## 技术栈
-
-### 核心依赖
-
-- **quinn**: QUIC 协议实现
-- **tokio**: 异步运行时
-- **serde** + **bincode**: 序列化/反序列化
-- **bytes**: 零拷贝字节操作
-- **mdns-sd**: mDNS 服务发现
-- **tracing**: 结构化日志
-
-### 项目结构
-
-```
-echostream/
-├── echostream-core/        # 核心框架
-│   ├── connection/         # QUIC 连接管理
-│   ├── protocol/           # 协议定义和编解码
-│   ├── rpc/                # RPC 框架
-│   └── stream/             # 流管理和时间同步
-├── echostream-discovery/   # 服务发现
-├── echostream-derive/      # 过程宏
-├── echostream-types/       # 公共类型
-└── examples/               # 示例代码
-```
-
-## 性能特点
-
-- **低延迟**: 基于 QUIC 的 0-RTT 握手，支持快速重连
-- **高吞吐**: 利用 QUIC 多路复用，单连接支持成千上万个并发流
-- **零拷贝**: 使用 `bytes::Bytes` 避免不必要的内存拷贝
-- **自动流控**: QUIC 内置的拥塞控制和流量控制
-- **弹性伸缩**: 基于 tokio 的异步模型，轻松支持高并发
-
-## 安全性
-
-- **传输加密**: 所有数据通过 TLS 1.3 加密传输
-- **身份验证**: 支持证书验证和自定义认证中间件
-- **访问控制**: 连接级和消息级的权限控制
-- **防御能力**: 内置速率限制和防 DDoS 机制
-
-## 开发路线
-
-当前项目处于早期开发阶段，详细的版本规划请参阅 [ROADMAP.md](./ROADMAP.md)。
-
-## 设计哲学
-
-EchoStream 的设计遵循以下原则：
-
-1. **开发者友好优先**: 提供符合直觉的 API，最小化样板代码
-2. **性能和正确性并重**: 追求高性能的同时确保系统的可靠性
-3. **渐进式能力**: 基础功能开箱即用，高级特性按需启用
-4. **可观测性**: 内置丰富的日志和指标，便于问题诊断
-5. **社区驱动**: 欢迎反馈和贡献，共同打造更好的框架
-
-## 与其他框架的比较
-
-| 特性 | EchoStream | gRPC | Tarpc | Cap'n Proto RPC |
-|------|-----------|------|-------|----------------|
-| 传输协议 | QUIC | HTTP/2 | TCP/自定义 | TCP/自定义 |
-| 双向流 | ✅ | ✅ | ❌ | ✅ |
-| 时间同步 | ✅ | ❌ | ❌ | ❌ |
-| 服务发现 | ✅ (mDNS) | ❌ | ❌ | ❌ |
-| 0-RTT 重连 | ✅ | ❌ | ❌ | ❌ |
-| 实时流传输 | ✅ | 部分 | ❌ | 部分 |
-
-## 贡献指南
-
-我们欢迎各种形式的贡献：
-
-- 🐛 报告 Bug
-- 💡 提出新功能建议
-- 📝 改进文档
-- 🔧 提交代码
-
-## 开源协议
-
-本项目采用 [MIT License](../LICENSE) 开源协议。
-
-## 联系方式
-
-- 项目主页: https://github.com/yourusername/echostream
-- 问题反馈: https://github.com/yourusername/echostream/issues
-- 讨论区: https://github.com/yourusername/echostream/discussions
-
-## 鸣谢
-
-EchoStream 的灵感来源于：
-
-- **QUIC**: 现代化的传输层协议
-- **gRPC**: 优秀的 RPC 框架设计
-- **WebRTC**: 实时通信的最佳实践
-- **Rust 社区**: 强大的异步生态系统

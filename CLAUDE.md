@@ -24,6 +24,4 @@
 ## 上下文管理
 
 - 请将项目主文档更新在 @docs/README.md
-- 请将项目架构设计更新在 @docs/ARCHITECTURE.md
-- 请将版本规划更新在 @docs/ROADMAP.md
 - 请将版本日志更新在 @docs/CHANGELOG.md
