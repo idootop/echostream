@@ -16,6 +16,7 @@
 - **QUIC 优势**: 0-RTT 握手、多路复用、自动拥塞控制、无队头阻塞
 - **安全传输**: 内置 TLS 1.3 加密
 - **声明式 API**: 过程宏简化代码,最小化样板
+- **插件系统**: 模块化扩展机制,支持生命周期 hook 和配置定制
 
 ## 项目架构
 
@@ -59,6 +60,7 @@ echostream/
 - `protocol/`: 帧定义、编解码、时间同步协议
 - `rpc/`: RPC 框架(请求路由、处理器注册)
 - `stream/`: 流管理、时间戳对齐、抖动缓冲
+- `plugin/`: 插件系统(ServerPlugin、ClientPlugin trait 定义)
 - `server/`: 服务端实现
 - `client/`: 客户端实现
 
@@ -137,17 +139,17 @@ let client = RpcClient::connect("example.com:5000").await?;
 
 ```rust
 #[echostream::handler("user.login")]
-async fn login(ctx: Context, req: LoginReq) -> Result<Session> {
+async fn login(session: Session, req: LoginReq) -> Result<Session> {
     Ok(Session::new(req.username))
 }
 
 #[echostream::listener("user.logout")]
-async fn on_logout(ctx: Context, user_id: u64) {
+async fn on_logout(session: Session, user_id: u64) {
     println!("用户 {} 已登出", user_id);
 }
 
 #[echostream::stream_handler("audio.stream")]
-async fn handle_stream(ctx: Context, stream: StreamReceiver) {
+async fn handle_stream(session: Session, stream: StreamReceiver) {
     while let Some(data) = stream.recv().await {
         process(data);
     }
@@ -161,7 +163,8 @@ async fn handle_stream(ctx: Context, stream: StreamReceiver) {
 **子模块划分:**
 
 - `error.rs`: 统一错误类型
-- `context.rs`: 请求上下文
+- `context.rs`: 请求上下文(ServerContext、ClientContext)
+- `session.rs`: Session 会话定义
 - `timestamp.rs`: 时间戳相关类型
 
 **外部依赖:**
@@ -176,7 +179,7 @@ async fn handle_stream(ctx: Context, stream: StreamReceiver) {
 **核心 API 设计:**
 
 ```rust
-pub use echostream_core::{RpcServer, RpcClient, Context};
+pub use echostream_core::{RpcServer, RpcClient, ServerContext, ClientContext, Session};
 pub use echostream_derive::{handler, listener, stream_handler};
 pub use echostream_types::{Result, Error};
 
@@ -202,8 +205,8 @@ echostream = "0.1"
 use echostream::prelude::*;
 
 #[echostream::handler("audio.play")]
-async fn handle_play(ctx: Context, file: String) -> Result<()> {
-    println!("播放: {}", file);
+async fn handle_play(session: Session, file: String) -> Result<()> {
+    println!("客户端 {} 请求播放: {}", session.peer_addr(), file);
     Ok(())
 }
 
@@ -255,12 +258,12 @@ async fn main() -> Result<()> {
 ```rust
 // 服务端
 #[echostream::handler("user.login")]
-async fn login(ctx: Context, username: String) -> Result<Session> {
-    Ok(Session::new(username))
+async fn login(session: Session, username: String) -> Result<UserInfo> {
+    Ok(UserInfo::new(username))
 }
 
 // 客户端
-let session: Session = client.request("user.login", "alice").await?;
+let user: UserInfo = client.request("user.login", "alice").await?;
 ```
 
 ### 2. Event
@@ -273,7 +276,7 @@ client.emit("user.logged_out", user_id).await?;
 
 // 接收方
 #[echostream::listener("user.logged_out")]
-async fn on_logout(ctx: Context, user_id: u64) {
+async fn on_logout(ctx: ClientContext, user_id: u64) {
     println!("用户 {} 已登出", user_id);
 }
 ```
@@ -292,7 +295,7 @@ loop {
 
 // 接收端
 #[echostream::stream_handler("audio.stream")]
-async fn handle_stream(ctx: Context, stream: StreamReceiver) {
+async fn handle_stream(session: Session, stream: StreamReceiver) {
     while let Some(frame) = stream.recv().await {
         play_audio(frame);
     }
@@ -316,4 +319,250 @@ stream.send_with_timestamp(audio_data, timestamp).await?;
 while let Some((data, aligned_time)) = stream.recv_aligned().await {
     schedule_playback(data, aligned_time);
 }
+```
+
+### 5. Context 和 Session
+
+框架提供不同层级的上下文类型:
+
+#### ServerContext
+
+服务端全局上下文,贯穿整个服务生命周期:
+
+```rust
+let server = RpcServer::builder()
+    .bind("0.0.0.0:5000")
+    .on_start(|ctx: ServerContext| async move {
+        // 初始化全局资源
+        ctx.set("db", Database::connect().await?);
+        Ok(())
+    })
+    .build()?;
+```
+
+#### Session
+
+服务端单个客户端会话上下文,每个连接独立:
+
+```rust
+#[echostream::handler("user.login")]
+async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
+    // session 包含当前客户端的连接信息
+    println!("客户端地址: {}", session.peer_addr());
+
+    // 从 session 访问服务端全局上下文
+    let db = session.server_ctx().get::<Database>("db")?;
+
+    // 存储会话级数据
+    session.set("user_id", req.user_id);
+
+    // 向该客户端发送消息
+    session.emit("welcome", "欢迎登录").await?;
+
+    Ok(LoginResp { token: "xxx".into() })
+}
+```
+
+#### ClientContext
+
+客户端全局上下文,贯穿整个客户端生命周期:
+
+```rust
+#[echostream::listener("server.notify")]
+async fn on_notify(ctx: ClientContext, msg: String) {
+    println!("收到服务端通知: {}", msg);
+}
+```
+
+### 6. 生命周期 Hook
+
+框架提供多层级的生命周期 hook:
+
+#### Server 生命周期
+
+```rust
+let server = RpcServer::builder()
+    .bind("0.0.0.0:5000")
+    .on_start(|ctx: ServerContext| async move {
+        // 服务启动时执行
+        println!("服务启动,初始化资源...");
+        ctx.set("db", Database::connect().await?);
+        Ok(())
+    })
+    .on_shutdown(|ctx: ServerContext| async move {
+        // 服务关闭时执行
+        println!("服务关闭,清理资源...");
+        if let Some(db) = ctx.get::<Database>("db") {
+            db.close().await?;
+        }
+        Ok(())
+    })
+    .on_connect(|session: Session| async move {
+        // 客户端连接时执行
+        println!("客户端 {} 已连接", session.peer_addr());
+        session.set("connect_time", Instant::now());
+        Ok(())
+    })
+    .on_disconnect(|session: Session| async move {
+        // 客户端断开时执行
+        let duration = session.get::<Instant>("connect_time")
+            .map(|t| t.elapsed())
+            .unwrap_or_default();
+        println!("客户端 {} 断开,连接时长: {:?}", session.peer_addr(), duration);
+        Ok(())
+    })
+    .build()?;
+```
+
+#### Client 生命周期
+
+```rust
+let client = RpcClient::builder()
+    .connect("127.0.0.1:5000")
+    .on_connect(|ctx: ClientContext| async move {
+        // 连接建立时执行
+        println!("已连接到服务器");
+        Ok(())
+    })
+    .on_disconnect(|ctx: ClientContext| async move {
+        // 连接断开时执行
+        println!("与服务器断开连接");
+        Ok(())
+    })
+    .build()
+    .await?;
+```
+
+### 7. 插件系统
+
+插件系统分为 `ServerPlugin` 和 `ClientPlugin`,通过直接操作 builder 实现配置和注册。
+
+#### 插件 Trait 定义
+
+```rust
+// Server 插件
+pub trait ServerPlugin {
+    fn name(&self) -> &str;
+    fn install(self, builder: ServerBuilder) -> Result<ServerBuilder>;
+}
+
+// Client 插件
+pub trait ClientPlugin {
+    fn name(&self) -> &str;
+    fn install(self, builder: ClientBuilder) -> Result<ClientBuilder>;
+}
+```
+
+#### ServerPlugin 示例
+
+```rust
+use echostream::prelude::*;
+
+struct AuthPlugin {
+    secret_key: String,
+}
+
+impl ServerPlugin for AuthPlugin {
+    fn name(&self) -> &str {
+        "auth"
+    }
+
+    fn install(self, builder: ServerBuilder) -> Result<ServerBuilder> {
+        // 直接操作 builder,注册 handler 和 hook
+        Ok(builder
+            .set("auth.secret", self.secret_key.clone())
+            .handler("auth.login", handle_login)
+            .listener("auth.logout", on_logout)
+            .on_connect(|session| async move {
+                println!("新连接,准备认证: {}", session.peer_addr());
+                session.set("authenticated", false);
+                Ok(())
+            })
+            .on_disconnect(|session| async move {
+                if let Some(user_id) = session.get::<u64>("user_id") {
+                    println!("用户 {} 断开连接", user_id);
+                }
+                Ok(())
+            }))
+    }
+}
+
+// Handler 实现
+async fn handle_login(session: Session, req: LoginReq) -> Result<LoginResp> {
+    let secret = session.server_ctx().get::<String>("auth.secret")?;
+
+    // 验证逻辑
+    if verify_password(&req.password, &secret) {
+        session.set("authenticated", true);
+        session.set("user_id", req.user_id);
+        Ok(LoginResp {
+            success: true,
+            token: generate_token(req.user_id)
+        })
+    } else {
+        Ok(LoginResp { success: false, token: String::new() })
+    }
+}
+
+async fn on_logout(session: Session, _: ()) {
+    session.set("authenticated", false);
+    println!("用户已登出");
+}
+```
+
+#### ClientPlugin 示例
+
+```rust
+struct AuthPlugin {
+    secret_key: String,
+}
+
+impl ClientPlugin for AuthPlugin {
+    fn name(&self) -> &str {
+        "auth"
+    }
+
+    fn install(self, builder: ClientBuilder) -> Result<ClientBuilder> {
+        Ok(builder
+            .set("auth.secret", self.secret_key)
+            .handler("auth.challenge", handle_challenge)
+            .on_connect(|ctx| async move {
+                println!("已连接,准备认证");
+                // 自动发起登录
+                let req = LoginReq {
+                    user_id: 1,
+                    password: "xxx".into()
+                };
+                ctx.request("auth.login", req).await?;
+                Ok(())
+            }))
+    }
+}
+
+async fn handle_challenge(ctx: ClientContext, challenge: String) -> Result<String> {
+    let secret = ctx.get::<String>("auth.secret")?;
+    Ok(compute_response(&challenge, &secret))
+}
+```
+
+#### 使用插件
+
+```rust
+// Server 端
+let server = RpcServer::builder()
+    .bind("0.0.0.0:5000")
+    .plugin(AuthPlugin {
+        secret_key: "my-secret".into(),
+    })
+    .plugin(LoggingPlugin::default())
+    .build()?;
+
+// Client 端
+let client = RpcClient::builder()
+    .connect("127.0.0.1:5000")
+    .plugin(AuthPlugin {
+        secret_key: "my-secret".into(),
+    })
+    .build()
+    .await?;
 ```
