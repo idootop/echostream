@@ -1,5 +1,7 @@
 # EchoStream
 
+> 这是一个实验性项目，是对【AI 为主 + 人工为辅】开发模式的公开实践，对话记录可在 `/history` 目录查看。
+
 **EchoStream** is a high-performance, asynchronous bi-directional RPC and streaming framework for Rust. It is engineered for real-time applications that demand both low-latency control signaling and synchronized media transmission.
 
 ## Features
