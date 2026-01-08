@@ -1,0 +1,23 @@
+[package]
+name = "echostream-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "核心框架,实现 RPC 和流传输能力"
+
+[dependencies]
+echostream-types = { workspace = true }
+
+quinn = { workspace = true }
+tokio = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

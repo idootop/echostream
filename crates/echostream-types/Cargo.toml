@@ -1,0 +1,17 @@
+[package]
+name = "echostream-types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "公共类型、错误定义和工具函数"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+bytes = { workspace = true }

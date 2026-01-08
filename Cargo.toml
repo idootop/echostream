@@ -1,6 +1,54 @@
-[package]
-name = "echostream"
+[workspace]
+members = [
+    "crates/echostream",
+    "crates/echostream-core",
+    "crates/echostream-types",
+    "crates/echostream-derive",
+    "crates/echostream-discovery",
+]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+authors = ["Del Wang <hello@xbox.work>"]
+license = "MIT"
+repository = "https://github.com/idootop/echostream"
+homepage = "https://github.com/idootop/echostream"
+documentation = "https://docs.rs/echostream"
+keywords = ["rpc", "quic", "streaming", "real-time", "async"]
+categories = ["network-programming", "asynchronous"]
 
-[dependencies]
+[workspace.dependencies]
+# Internal crates
+echostream-core = { path = "crates/echostream-core", version = "0.1.0" }
+echostream-types = { path = "crates/echostream-types", version = "0.1.0" }
+echostream-derive = { path = "crates/echostream-derive", version = "0.1.0" }
+echostream-discovery = { path = "crates/echostream-discovery", version = "0.1.0" }
+
+# External dependencies
+quinn = "0.11"
+tokio = { version = "1.42", features = ["full"] }
+postcard = { version = "1.0", features = ["use-std"] }
+serde = { version = "1.0", features = ["derive"] }
+bytes = "1.9"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "2.0"
+anyhow = "1.0"
+mdns-sd = "0.11"
+
+# Proc-macro dependencies
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

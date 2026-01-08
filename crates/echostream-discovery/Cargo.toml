@@ -1,0 +1,19 @@
+[package]
+name = "echostream-discovery"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "基于 mDNS 的局域网服务发现"
+
+[dependencies]
+echostream-types = { workspace = true }
+
+mdns-sd = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }

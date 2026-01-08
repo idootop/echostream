@@ -1,26 +1,134 @@
 # EchoStream
 
-> 这是一个实验性项目，是对【AI 为主 + 人工为辅】开发模式的公开实践，对话记录可在 `/history` 目录查看。
+> 基于 QUIC 的高性能异步双向 RPC 和流传输框架，让实时通信像写本地函数一样简单。
 
-**EchoStream** is a high-performance, asynchronous bi-directional RPC and streaming framework for Rust. It is engineered for real-time applications that demand both low-latency control signaling and synchronized media transmission.
+## 项目简介
 
-## Features
+专为实时通信场景设计的 Rust RPC 框架，融合传统 RPC 的便利性和实时流传输能力，通过 QUIC 协议在单连接上同时处理控制信令和实时数据流。
 
-- **⚡ Bi-Directional Multi-Modal RPC**: Handle Requests, Responses, and Events over a single unified connection.
-- **🎵 Synchronized Audio Streaming**: Built-in clock synchronization and jitter buffering to align audio frames across distributed nodes.
-- **🏎 QUIC-Powered**: Built on `quinn`, leveraging multi-streaming to eliminate Head-of-Line (HoL) blocking between control data and audio streams.
-- **🛰 Zero-Conf Discovery**: Instant peer-to-peer discovery via mDNS for local area networks.
-- **🦀 Developer Friendly**: Procedural macros for effortless handler registration and minimal boilerplate.
+## 核心特性
 
-## Quick Start
+- **🔄 异步双向通信**: 客户端和服务端都可以主动发起请求、发送事件和推送流数据
+- **📡 多模态信令**: 支持 Request/Response、Event 和 Stream 三种通信模式
+- **🎵 流式传输**: 支持音视频等实时数据的低延迟传输，配备抖动缓冲和时间戳对齐
+- **⏱ 时间同步**: 内置类 NTP 时钟同步协议，确保分布式节点间的时间对齐
+- **🚀 基于 QUIC**: 利用 QUIC 的 0-RTT 握手、多路复用和自动拥塞控制
+- **🔍 服务发现**: 基于 mDNS 的零配置局域网服务发现（可选）
+- **🛡 安全传输**: 内置 TLS 1.3 加密，支持自签名和 CA 证书
+- **🧩 插件系统**: 模块化扩展机制，支持生命周期 hook 和配置定制
+- **🦀 开发友好**: 提供声明式 API 和过程宏，最小化样板代码
 
-> **🚧 Active Development**: EchoStream is currently in its early stages. Documentation and crates will be available soon.
+## 使用场景
 
-## Why EchoStream?
+EchoStream 特别适用于需要同时处理控制指令和实时数据的场景：
 
-While traditional RPC frameworks are optimized for discrete Request/Response cycles, they often fall short in handling **Isochronous Data**—where timing is as critical as integrity.
+- **实时音视频通信**: 低延迟音视频传输，支持多路复用和时间同步
+- **物联网设备控制**: 命令下发、状态上报和数据流采集
+- **游戏网络**: 游戏状态同步、事件广播和语音通信
+- **远程桌面**: 屏幕共享、输入控制和音频转发
+- **分布式系统**: 节点间通信、数据同步和事件总线
 
-EchoStream bridges this gap by treating control signals and audio streams as first-class citizens. By combining the transport benefits of **QUIC** with a custom **Time-Sync** Protocol, it ensures that audio frames remain synchronized across the network while maintaining low-latency command execution.
+## 项目架构
+
+采用 Cargo Workspace 管理的 monorepo 架构:
+
+```
+echostream/
+├── Cargo.toml               # Workspace 定义
+├── crates/                  # 所有 Rust crates
+│   ├── echostream/          # 统一入口，重导出所有公共 API
+│   ├── echostream-core/     # 核心框架(RPC、流传输、连接管理)
+│   ├── echostream-discovery/# 服务发现(mDNS)
+│   ├── echostream-derive/   # 过程宏(handler、listener、stream_handler)
+│   └── echostream-types/    # 公共类型和错误定义
+├── examples/                # 示例代码
+│   ├── simple_rpc.rs        # 基础 RPC 调用示例
+│   ├── event_bus.rs         # 事件总线示例
+│   ├── audio_stream.rs      # 音频流传输示例
+│   └── service_discovery.rs # 服务发现示例
+└── sdk/                     # 其他语言绑定(未来)
+    ├── nodejs/              # Node.js 绑定
+    └── python/              # Python 绑定
+```
+
+## 子包说明
+
+### [echostream](../crates/echostream/README.md)
+
+统一入口 crate，重导出所有公共 API，提供 `prelude` 模块。
+
+### [echostream-core](../crates/echostream-core/README.md)
+
+核心框架，实现 RPC 和流传输能力:
+
+- 连接管理、协议层、RPC 框架
+- 流管理、插件系统
+- 服务端/客户端实现
+
+### [echostream-types](../crates/echostream-types/README.md)
+
+公共类型、错误定义和工具函数:
+
+- 错误类型、上下文类型
+- Session 会话、时间戳类型
+
+### [echostream-derive](../crates/echostream-derive/README.md)
+
+过程宏，简化处理器定义:
+
+- `handler` 宏：请求处理器
+- `listener` 宏：事件监听器
+- `stream_handler` 宏：流处理器
+
+### [echostream-discovery](../crates/echostream-discovery/README.md)
+
+基于 mDNS 的局域网服务发现:
+
+- 服务广播、服务发现
+- 服务解析、零配置
+
+## 快速上手
+
+> **开发中，敬请期待...**
+
+### 安装
+
+```toml
+[dependencies]
+echostream = "0.1"
+```
+
+### 示例代码
+
+更多示例请查看 [examples](../examples/) 目录。
+
+```rust
+use echostream::prelude::*;
+
+// 服务端
+#[echostream::handler("hello")]
+async fn hello(session: Session, name: String) -> Result<String> {
+    Ok(format!("Hello, {}!", name))
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let server = RpcServer::builder()
+        .bind("0.0.0.0:5000")
+        .handler(hello)
+        .build()?;
+    server.run().await
+}
+
+// 客户端
+#[tokio::main]
+async fn main() -> Result<()> {
+    let client = RpcClient::connect("127.0.0.1:5000").await?;
+    let response: String = client.request("hello", "World").await?;
+    println!("{}", response); // Hello, World!
+    Ok(())
+}
+```
 
 ## License
 
