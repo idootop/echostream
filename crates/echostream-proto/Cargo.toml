@@ -1,5 +1,5 @@
 [package]
-name = "echostream-types"
+name = "echostream-proto"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,7 +9,7 @@ homepage.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "公共类型、错误定义和工具函数"
+description = "底层协议定义、Wire Format 和基础类型"
 
 [dependencies]
 serde = { workspace = true }

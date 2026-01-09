@@ -9,14 +9,16 @@ homepage.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "基于 QUIC 的双向 RPC 和流传输框架"
+description = "基于 QUIC 的双向 RPC 和流传输框架 - 统一入口"
 
 [dependencies]
 echostream-core = { workspace = true }
-echostream-types = { workspace = true }
-echostream-derive = { workspace = true }
+echostream-proto = { workspace = true }
+echostream-transport = { workspace = true }
+echostream-derive = { workspace = true, optional = true }
 echostream-discovery = { workspace = true, optional = true }
 
 [features]
-default = ['discovery']
+default = ['derive', 'discovery']
+derive = ["dep:echostream-derive"]
 discovery = ["dep:echostream-discovery"]

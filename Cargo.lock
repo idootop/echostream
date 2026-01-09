@@ -144,7 +144,8 @@ dependencies = [
  "echostream-core",
  "echostream-derive",
  "echostream-discovery",
- "echostream-types",
+ "echostream-proto",
+ "echostream-transport",
 ]
 
 [[package]]
@@ -153,9 +154,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
- "echostream-types",
+ "echostream-proto",
+ "echostream-transport",
  "postcard",
- "quinn",
  "serde",
  "tokio",
  "tracing",
@@ -175,18 +176,30 @@ name = "echostream-discovery"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "echostream-types",
+ "echostream-proto",
  "mdns-sd",
  "tokio",
 ]
 
 [[package]]
-name = "echostream-types"
+name = "echostream-proto"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "serde",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "echostream-transport"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "echostream-proto",
+ "quinn",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

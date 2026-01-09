@@ -9,12 +9,12 @@ homepage.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "核心框架,实现 RPC 和流传输能力"
+description = "核心抽象层：调度器、插件系统、中间件、时间同步"
 
 [dependencies]
-echostream-types = { workspace = true }
+echostream-proto = { workspace = true }
+echostream-transport = { workspace = true }
 
-quinn = { workspace = true }
 tokio = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
