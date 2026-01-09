@@ -1,28 +1,97 @@
 # echostream-derive
 
-过程宏，简化处理器定义。
+`echostream-derive` 负责将普通的 Rust 异步函数映射为框架的 `Trait` 协议，在编译期完成类型转换、依赖注入和样板代码生成。
 
-## 功能列表
+## 核心设计哲学
 
-- **handler 宏**: 简化请求处理器定义
-- **listener 宏**: 简化事件监听器定义
-- **stream_handler 宏**: 简化流处理器定义
+- **声明式 API**：隐藏 `Bytes` 处理细节，开发者仅需关注强类型业务函数。
+- **零成本抽象**：使用影子结构体 (Shadow Structs) 实现零大小类型 (ZST)，无运行时性能损耗。
+- **编译期验证**：通过过程宏在编译阶段拦截不符合 `Session` 或 `Codec` 要求的函数签名。
 
-## 子模块划分
+---
 
-- `handler.rs`: 请求处理器宏
-- `listener.rs`: 事件监听器宏
-- `stream_handler.rs`: 流处理器宏
+## 技术架构与链路
 
-## 技术栈
+### 1. 内部模块
 
-- `syn`: 解析 Rust 语法
-- `quote`: 生成 Rust 代码
-- `proc-macro2`: 过程宏工具
+- `parser.rs`: 使用 `darling` 提取宏属性（如 `name`, `timeout`），使用 `syn` 解析函数签名（Args, Return）。
+- `extractors.rs`: 根据函数参数自动匹配提取策略（Session-Only, Payload-Only, Full 等）。
+- `codegen/`: 包含 `rpc`, `event`, `stream` 三大生成器，负责实现框架核心 Trait。
 
-## 核心 API 设计
+### 2. 代码展开工作流 (以 `#[rpc]` 为例)
 
-### handler 宏
+**宏处理逻辑示例：**
+
+```rust
+// --- 输入：原始业务代码 ---
+#[echostream::rpc("user.login")]
+async fn login(session: Session, req: LoginReq) -> Result<LoginResp> { ... }
+
+// --- 展开：生成的底层支撑 ---
+#[allow(non_camel_case_types)]
+pub struct login; // 1. 影子 ZST 结构体
+
+impl echostream::core::RpcHandler for login {
+    fn name(&self) -> &'static str { "user.login" }
+
+    fn handle(&self, session: Session, payload: Bytes) -> BoxFuture<'static, Result<Bytes, EchoError>> {
+        Box::pin(async move {
+            // 2. 依赖注入与反序列化 (Extracting)
+            let req: LoginReq = postcard::from_bytes(&payload).map_err(..)?;
+
+            // 3. 调用业务函数
+            let result = super::login(session, req).await.map_err(..)?;
+
+            // 4. 序列化结果 (Encoding)
+            Ok(Bytes::from(postcard::to_allocvec(&result)?))
+        })
+    }
+}
+
+```
+
+---
+
+## 提取器匹配规则 (Argument Patterns)
+
+宏根据函数签名自动推断逻辑，支持以下模式：
+
+| 模式             | 签名示例           | 生成逻辑                             |
+| ---------------- | ------------------ | ------------------------------------ |
+| **Full**         | `fn(Session, Req)` | 获取 Session 并反序列化 Payload。    |
+| **Session Only** | `fn(Session)`      | 仅注入 Session，忽略 Payload。       |
+| **Req Only**     | `fn(Req)`          | 仅反序列化 Payload，忽略会话上下文。 |
+| **Pure**         | `fn()`             | 无参数触发逻辑。                     |
+
+---
+
+## 三大核心宏规格
+
+### 1. `#[rpc]` (Request/Response)
+
+适用于需要确认返回值的双向调用。
+
+- **输入**：支持 `Session` 注入及反序列化请求体。
+- **输出**：必须返回 `Result<T, E>`，其中 `T` 需实现 `Serialize`。
+
+### 2. `#[event]` (One-way)
+
+适用于单向通知或广播。
+
+- **特点**：无返回值（`()`）
+
+### 3. `#[stream]` (Streaming)
+
+适用于实时数据传输（如音频流、日志流）。
+
+- **参数**：支持 `StreamReceiver`。
+
+
+---
+
+## 示例代码
+
+### rpc 宏
 
 用于定义请求处理器，支持 Request/Response 模式。
 
@@ -46,24 +115,20 @@ async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
     })
 }
 
-// 支持多种参数组合
-#[echostream::rpc("user.info")]
-async fn get_user_info(session: Session) -> Result<UserInfo> {
-    let user_id = session.get::<u64>("user_id")?;
-    let user = load_user(user_id).await?;
-    Ok(user.into())
+// 支持不指定方法名称，自动取函数名称
+#[echostream::rpc]
+async fn add(a: u32, b: u32) -> Result<u32> {
+    Ok(a + b)
 }
 
-// 访问服务端全局上下文
-#[echostream::rpc("data.query")]
-async fn query_data(session: Session, query: Query) -> Result<QueryResult> {
-    let db = session.server_ctx().get::<Database>("db")?;
-    let result = db.query(&query).await?;
-    Ok(result)
-}
+// 无参数请求
+#[echostream::event("server.info")]
+async fn get_server_info() -> Result<ServerInfo> {
+    Ok(ServerInfo { ... })
+} 
 ```
 
-### listener 宏
+### event 宏
 
 用于定义事件监听器，处理单向消息通知。
 
@@ -87,19 +152,9 @@ async fn on_logout(session: Session, user_id: u64) {
 async fn on_ping(session: Session) {
     println!("收到 ping 来自: {}", session.peer_addr());
 }
-
-// 客户端监听服务端事件
-#[echostream::event("server.broadcast")]
-async fn on_broadcast(ctx: ClientContext, msg: String) {
-    println!("服务端广播: {}", msg);
-
-    // 访问客户端全局上下文
-    let cache = ctx.get::<Cache>("cache")?;
-    cache.update(&msg).await;
-}
 ```
 
-### stream_handler 宏
+### stream 宏
 
 用于定义流处理器，处理实时数据流。
 
@@ -117,116 +172,5 @@ async fn handle_audio_stream(session: Session, mut stream: StreamReceiver) {
     }
 
     println!("音频流结束");
-}
-
-// 带时间戳对齐的流
-#[echostream::stream("audio.sync")]
-async fn handle_synced_stream(session: Session, mut stream: StreamReceiver) {
-    // 接收带时间戳的数据
-    while let Some((frame, timestamp)) = stream.recv_with_timestamp().await {
-        // 根据时间戳调度播放
-        schedule_playback(frame, timestamp).await;
-    }
-}
-
-// 双向流
-#[echostream::stream("video.call")]
-async fn handle_video_call(session: Session, mut stream: BiStream) {
-    // 同时发送和接收
-    tokio::spawn(async move {
-        while let Some(frame) = capture_video().await {
-            stream.send(frame).await.unwrap();
-        }
-    });
-
-    while let Some(frame) = stream.recv().await {
-        display_video(frame).await;
-    }
-}
-```
-
-## 宏展开示例
-
-### handler 宏展开
-
-```rust
-// 原始代码
-#[echostream::rpc("user.login")]
-async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
-    // ...
-}
-
-// 展开后
-pub fn login_handler() -> Handler {
-    Handler::new("user.login", |session, payload| {
-        Box::pin(async move {
-            let req: LoginReq = postcard::from_bytes(&payload)?;
-            let resp = login(session, req).await?;
-            let bytes = postcard::to_allocvec(&resp)?;
-            Ok(bytes)
-        })
-    })
-}
-```
-
-### listener 宏展开
-
-```rust
-// 原始代码
-#[echostream::event("user.logout")]
-async fn on_logout(session: Session, user_id: u64) {
-    // ...
-}
-
-// 展开后
-pub fn on_logout_listener() -> Listener {
-    Listener::new("user.logout", |session, payload| {
-        Box::pin(async move {
-            let user_id: u64 = postcard::from_bytes(&payload)?;
-            on_logout(session, user_id).await;
-            Ok(())
-        })
-    })
-}
-```
-
-## 使用示例
-
-```rust
-use echostream::prelude::*;
-
-// 定义处理器
-#[echostream::rpc("calc.add")]
-async fn add(session: Session, req: AddRequest) -> Result<AddResponse> {
-    Ok(AddResponse {
-        result: req.a + req.b,
-    })
-}
-
-// 定义监听器
-#[echostream::event("event.notify")]
-async fn on_notify(session: Session, msg: String) {
-    println!("收到通知: {}", msg);
-}
-
-// 定义流处理器
-#[echostream::stream("data.stream")]
-async fn handle_stream(session: Session, mut stream: StreamReceiver) {
-    while let Some(data) = stream.recv().await {
-        process(data).await;
-    }
-}
-
-// 注册到服务器
-#[tokio::main]
-async fn main() -> Result<()> {
-    let server = EchoServer::builder()
-        .bind("0.0.0.0:5000")
-        .add_rpc(add)
-        .add_event(on_notify)
-        .add_stream(handle_stream)
-        .build()?;
-
-    server.run().await
 }
 ```
