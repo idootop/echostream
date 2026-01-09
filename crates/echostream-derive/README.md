@@ -30,7 +30,7 @@
 use echostream::prelude::*;
 
 // 基础用法
-#[echostream::handler("user.login")]
+#[echostream::rpc("user.login")]
 async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
     println!("客户端 {} 请求登录", session.peer_addr());
 
@@ -47,7 +47,7 @@ async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
 }
 
 // 支持多种参数组合
-#[echostream::handler("user.info")]
+#[echostream::rpc("user.info")]
 async fn get_user_info(session: Session) -> Result<UserInfo> {
     let user_id = session.get::<u64>("user_id")?;
     let user = load_user(user_id).await?;
@@ -55,7 +55,7 @@ async fn get_user_info(session: Session) -> Result<UserInfo> {
 }
 
 // 访问服务端全局上下文
-#[echostream::handler("data.query")]
+#[echostream::rpc("data.query")]
 async fn query_data(session: Session, query: Query) -> Result<QueryResult> {
     let db = session.server_ctx().get::<Database>("db")?;
     let result = db.query(&query).await?;
@@ -71,7 +71,7 @@ async fn query_data(session: Session, query: Query) -> Result<QueryResult> {
 use echostream::prelude::*;
 
 // 基础用法
-#[echostream::listener("user.logout")]
+#[echostream::event("user.logout")]
 async fn on_logout(session: Session, user_id: u64) {
     println!("用户 {} 已登出", user_id);
 
@@ -83,13 +83,13 @@ async fn on_logout(session: Session, user_id: u64) {
 }
 
 // 无参数事件
-#[echostream::listener("ping")]
+#[echostream::event("ping")]
 async fn on_ping(session: Session) {
     println!("收到 ping 来自: {}", session.peer_addr());
 }
 
 // 客户端监听服务端事件
-#[echostream::listener("server.broadcast")]
+#[echostream::event("server.broadcast")]
 async fn on_broadcast(ctx: ClientContext, msg: String) {
     println!("服务端广播: {}", msg);
 
@@ -107,7 +107,7 @@ async fn on_broadcast(ctx: ClientContext, msg: String) {
 use echostream::prelude::*;
 
 // 基础用法
-#[echostream::stream_handler("audio.stream")]
+#[echostream::stream("audio.stream")]
 async fn handle_audio_stream(session: Session, mut stream: StreamReceiver) {
     println!("客户端 {} 开启音频流", session.peer_addr());
 
@@ -120,7 +120,7 @@ async fn handle_audio_stream(session: Session, mut stream: StreamReceiver) {
 }
 
 // 带时间戳对齐的流
-#[echostream::stream_handler("audio.sync")]
+#[echostream::stream("audio.sync")]
 async fn handle_synced_stream(session: Session, mut stream: StreamReceiver) {
     // 接收带时间戳的数据
     while let Some((frame, timestamp)) = stream.recv_with_timestamp().await {
@@ -130,7 +130,7 @@ async fn handle_synced_stream(session: Session, mut stream: StreamReceiver) {
 }
 
 // 双向流
-#[echostream::stream_handler("video.call")]
+#[echostream::stream("video.call")]
 async fn handle_video_call(session: Session, mut stream: BiStream) {
     // 同时发送和接收
     tokio::spawn(async move {
@@ -151,7 +151,7 @@ async fn handle_video_call(session: Session, mut stream: BiStream) {
 
 ```rust
 // 原始代码
-#[echostream::handler("user.login")]
+#[echostream::rpc("user.login")]
 async fn login(session: Session, req: LoginReq) -> Result<LoginResp> {
     // ...
 }
@@ -173,7 +173,7 @@ pub fn login_handler() -> Handler {
 
 ```rust
 // 原始代码
-#[echostream::listener("user.logout")]
+#[echostream::event("user.logout")]
 async fn on_logout(session: Session, user_id: u64) {
     // ...
 }
@@ -196,7 +196,7 @@ pub fn on_logout_listener() -> Listener {
 use echostream::prelude::*;
 
 // 定义处理器
-#[echostream::handler("calc.add")]
+#[echostream::rpc("calc.add")]
 async fn add(session: Session, req: AddRequest) -> Result<AddResponse> {
     Ok(AddResponse {
         result: req.a + req.b,
@@ -204,13 +204,13 @@ async fn add(session: Session, req: AddRequest) -> Result<AddResponse> {
 }
 
 // 定义监听器
-#[echostream::listener("event.notify")]
+#[echostream::event("event.notify")]
 async fn on_notify(session: Session, msg: String) {
     println!("收到通知: {}", msg);
 }
 
 // 定义流处理器
-#[echostream::stream_handler("data.stream")]
+#[echostream::stream("data.stream")]
 async fn handle_stream(session: Session, mut stream: StreamReceiver) {
     while let Some(data) = stream.recv().await {
         process(data).await;
@@ -220,11 +220,11 @@ async fn handle_stream(session: Session, mut stream: StreamReceiver) {
 // 注册到服务器
 #[tokio::main]
 async fn main() -> Result<()> {
-    let server = RpcServer::builder()
+    let server = EchoServer::builder()
         .bind("0.0.0.0:5000")
-        .handler(add)
-        .listener(on_notify)
-        .stream_handler(handle_stream)
+        .add_rpc(add)
+        .add_event(on_notify)
+        .add_stream(handle_stream)
         .build()?;
 
     server.run().await

@@ -33,7 +33,7 @@ use echostream::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     // 启用服务发现
-    let server = RpcServer::builder()
+    let server = EchoServer::builder()
         .bind("0.0.0.0:5000")
         .enable_discovery("MyService")  // 广播服务名称
         .build()?;
@@ -54,10 +54,10 @@ use echostream::prelude::*;
 #[tokio::main]
 async fn main() -> Result<()> {
     // 方式1: 自动发现并连接（局域网）
-    let client = RpcClient::discover("MyService").await?;
+    let client = EchoClient::discover("MyService").await?;
 
     // 方式2: 手动指定地址（公网或已知 IP）
-    let client = RpcClient::connect("192.168.1.100:5000").await?;
+    let client = EchoClient::connect("192.168.1.100:5000").await?;
 
     // 使用客户端
     let response = client.request("method", payload).await?;
@@ -97,29 +97,6 @@ for service in services {
 }
 ```
 
-### 高级用法
-
-```rust
-use echostream::prelude::*;
-use echostream_discovery::ServiceDiscovery;
-
-// 发现所有服务实例
-let resolver = ServiceDiscovery::new();
-let services = resolver.discover_all("MyService").await?;
-
-// 选择最优服务（例如延迟最低）
-let best_service = services
-    .into_iter()
-    .min_by_key(|s| measure_latency(&s.address))
-    .ok_or("未找到可用服务")?;
-
-// 连接到最优服务
-let client = RpcClient::connect(&format!("{}:{}",
-    best_service.address,
-    best_service.port
-)).await?;
-```
-
 ### 服务属性
 
 可以在服务广播时附加额外的属性信息。
@@ -127,7 +104,7 @@ let client = RpcClient::connect(&format!("{}:{}",
 ```rust
 use echostream::prelude::*;
 
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .enable_discovery("MyService")
     .service_property("version", "1.0.0")
@@ -153,13 +130,13 @@ let services = resolver
 
 ```rust
 // 服务端
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .enable_discovery("DevService")
     .build()?;
 
 // 客户端
-let client = RpcClient::discover("DevService").await?;
+let client = EchoClient::discover("DevService").await?;
 ```
 
 ### 场景 2: 本地网络应用
@@ -168,13 +145,13 @@ let client = RpcClient::discover("DevService").await?;
 
 ```rust
 // 音频服务器
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .enable_discovery("AudioServer")
     .build()?;
 
 // 音频客户端
-let client = RpcClient::discover("AudioServer").await?;
+let client = EchoClient::discover("AudioServer").await?;
 let stream = client.create_stream("audio.stream").await?;
 ```
 
@@ -189,7 +166,7 @@ let services = resolver.discover_all("MyService").await?;
 // 连接到所有实例
 let clients = futures::future::join_all(
     services.iter().map(|s|
-        RpcClient::connect(&format!("{}:{}", s.address, s.port))
+        EchoClient::connect(&format!("{}:{}", s.address, s.port))
     )
 ).await;
 
@@ -200,6 +177,6 @@ let client = select_client_round_robin(&clients);
 ## 注意事项
 
 - mDNS 仅适用于局域网环境
-- 公网部署需要手动指定地址：`RpcClient::connect("example.com:5000")`
+- 公网部署需要手动指定地址：`EchoClient::connect("example.com:5000")`
 - 服务发现有网络延迟，建议设置合理的超时时间
 - 防火墙可能阻止 mDNS 流量（UDP 5353 端口）

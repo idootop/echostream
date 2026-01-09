@@ -35,14 +35,14 @@
 ### 服务端
 
 ```rust
-use echostream_core::{RpcServer, Session};
+use echostream_core::{EchoServer, Session};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let server = RpcServer::builder()
+    let server = EchoServer::builder()
         .bind("0.0.0.0:5000")
-        .handler("method", handle_request)
-        .listener("event", handle_event)
+        .add_rpc(handle_request)
+        .add_event(handle_event)
         .on_start(|ctx| async move {
             println!("服务启动");
             Ok(())
@@ -69,11 +69,11 @@ async fn handle_event(session: Session, payload: Vec<u8>) {
 ### 客户端
 
 ```rust
-use echostream_core::RpcClient;
+use echostream_core::EchoClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = RpcClient::connect("127.0.0.1:5000").await?;
+    let client = EchoClient::connect("127.0.0.1:5000").await?;
 
     // 发送请求
     let response: Vec<u8> = client.request("method", payload).await?;
@@ -106,7 +106,7 @@ impl ServerPlugin for MyPlugin {
     fn install(self, builder: ServerBuilder) -> Result<ServerBuilder> {
         Ok(builder
             .set("plugin.config", self.config)
-            .handler("plugin.method", handle_method)
+            .add_rpc(handle_method)
             .on_connect(|session| async move {
                 println!("插件: 客户端连接");
                 Ok(())
@@ -115,7 +115,7 @@ impl ServerPlugin for MyPlugin {
 }
 
 // 使用插件
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .plugin(MyPlugin {
         config: "value".into(),
@@ -126,14 +126,14 @@ let server = RpcServer::builder()
 ### 生命周期 Hook
 
 ```rust
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .on_start(|ctx| async move {
         // 服务启动时执行
         ctx.set("db", Database::connect().await?);
         Ok(())
     })
-    .on_shutdown(|ctx| async move {
+    .on_stop(|ctx| async move {
         // 服务关闭时执行
         if let Some(db) = ctx.get::<Database>("db") {
             db.close().await?;
@@ -157,7 +157,7 @@ let server = RpcServer::builder()
 
 ```rust
 // ServerContext: 服务端全局上下文
-let server = RpcServer::builder()
+let server = EchoServer::builder()
     .bind("0.0.0.0:5000")
     .on_start(|ctx: ServerContext| async move {
         ctx.set("shared_data", SharedData::new());
@@ -180,7 +180,7 @@ async fn handle_request(session: Session, req: Request) -> Result<Response> {
 }
 
 // ClientContext: 客户端全局上下文
-let client = RpcClient::builder()
+let client = EchoClient::builder()
     .connect("127.0.0.1:5000")
     .on_connect(|ctx: ClientContext| async move {
         ctx.set("local_cache", Cache::new());

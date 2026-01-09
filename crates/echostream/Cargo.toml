@@ -18,5 +18,5 @@ echostream-derive = { workspace = true }
 echostream-discovery = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ['discovery']
 discovery = ["dep:echostream-discovery"]
