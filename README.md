@@ -42,10 +42,6 @@ echostream/
 │   ├── echostream-derive/   # 过程宏(handler、listener、stream_handler)
 │   └── echostream-types/    # 公共类型和错误定义
 ├── examples/                # 示例代码
-│   ├── simple_rpc.rs        # 基础 RPC 调用示例
-│   ├── event_bus.rs         # 事件总线示例
-│   ├── audio_stream.rs      # 音频流传输示例
-│   └── service_discovery.rs # 服务发现示例
 └── sdk/                     # 其他语言绑定(未来)
     ├── nodejs/              # Node.js 绑定
     └── python/              # Python 绑定
