@@ -2,11 +2,11 @@
 
 基于 mDNS 的轻量级局域网服务发现模块。
 
-## 设计原则
+## 子模块划分
 
-- **精简**: 仅依赖 `mdns-sd`，无冗余中间层
-- **直观**: `Discovery` 单一入口，支持流式 (Stream) 发现
-- **健壮**: 自动处理实例名冲突，内置属性 (TXT record) 编解码
+- `service.rs`: ServiceInfo 模型与属性转换
+- `discovery.rs`: Discovery 门面类，封装广播与发现逻辑
+- `error.rs`: 模块专用错误类型
 
 ## 核心模型
 
@@ -18,30 +18,10 @@
 - `address`: 自动获取的本地 IP
 - `metadata`: 键值对属性（版本、权重、协议等）
 
-## 子模块划分
-
-- `service.rs`: ServiceInfo 模型与属性转换
-- `discovery.rs`: Discovery 门面类，封装广播与发现逻辑
-- `error.rs`: 模块专用错误类型
-
 ## API 示例
 
 ```rust
 use echostream_discovery::{Discovery, ServiceInfo};
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let service = ServiceInfo::new("echo-bolt")
-        .with_property("protocol", "quic")
-        .with_property("id", "node-1");
-
-    // 只要 advertiser 不被 drop，广播就会持续
-    let _advertiser = Discovery::advertise(service).await?;
-
-    // 维持主程序运行
-    tokio::signal::ctrl_c().await?;
-    Ok(())
-}
 
 // 创建服务信息
 let service = ServiceInfo::new("AudioService")
