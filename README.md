@@ -39,7 +39,7 @@ echostream/
 │   ├── echostream/          # 统一入口，重导出所有公共 API
 │   ├── echostream-core/     # 核心框架(RPC、流传输、连接管理)
 │   ├── echostream-discovery/# 服务发现(mDNS)
-│   ├── echostream-derive/   # 过程宏(handler、listener、stream_handler)
+│   ├── echostream-derive/   # 过程宏(rpc、event、stream)
 │   └── echostream-types/    # 公共类型和错误定义
 ├── examples/                # 示例代码
 └── sdk/                     # 其他语言绑定(未来)
