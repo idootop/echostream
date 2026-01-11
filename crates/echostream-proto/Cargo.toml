@@ -9,9 +9,10 @@ homepage.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "底层协议定义、Wire Format 和基础类型"
+description = "底层协议定义和基础类型"
 
 [dependencies]
+async_trait =  { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 bytes = { workspace = true }
