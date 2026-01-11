@@ -41,4 +41,10 @@ pub trait ContextLifecycle: Context {
 
     /// 停止上下文
     async fn stop(&self) -> EchoResult<()>;
+
+    /// 注册连接成功回调
+    fn on_started<F: Fn(&dyn Session) + Send + Sync + 'static>(&self, f: F);
+
+    /// 注册断开连接回调
+    fn on_stopped<F: Fn(&dyn Session) + Send + Sync + 'static>(&self, f: F);
 }

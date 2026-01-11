@@ -2,36 +2,42 @@ use crate::{EchoError, EchoResult};
 use async_trait::async_trait;
 
 /// 事件处理器类型（上下文 + 事件数据）
-pub type ListenerHandler<EventContext> =
+type EventHandler<EventContext> =
     Arc<dyn Fn(EventContext, Box<dyn Any + Send + Sync>) -> EchoResult<()> + Send + Sync>;
 
 /// 事件管理实现接口
 #[async_trait]
-pub trait EventManagerTrait<EventContext: Send + Sync + 'static>: Send + Sync + 'static {
-    async fn add_listener(&self, name: String, handler: ListenerHandler<EventContext>) -> String;
-    async fn remove_listener(&self, name: &str, listener_id: &str) -> EchoResult<()>;
-    async fn trigger_event<EventData: Send + Sync + 'static>(
+pub trait EventManager<EventContext: Send + Sync + 'static>: Send + Sync + 'static {
+    async fn add_listener(&self, name: String, handler: EventHandler<EventContext>) -> String;
+    async fn remove_listener(&self, name: &str, listener_id: &str);
+    async fn dispatch_event<EventData: Send + Sync + 'static>(
         &self,
         context: EventContext,
         name: String,
         data: EventData,
     ) -> EchoResult<()>;
+    async fn clear_all_listeners(&self);
 }
 
 /// 事件管理抽象接口
 #[async_trait]
 pub trait Listenable: Send + Sync + 'static {
     type EventContext: Clone + Send + Sync + 'static;
-    type EventManager: EventManagerTrait<Self::EventContext>;
+    type EventManager: EventManager<Self::EventContext>;
 
-    // ===== 外部需要实现的接口 =====
-
-    /// 获取事件管理器实例
     fn get_event_manager(&self) -> &Self::EventManager;
-    /// 获取事件上下文
     fn get_event_context(&self) -> Self::EventContext;
 
-    // ===== 代理给具体的 Manager 实现=====
+    async fn dispatch_event<EventData: Send + Sync + 'static>(
+        &self,
+        name: impl Into<String> + Send,
+        data: EventData,
+    ) -> EchoResult<()> {
+        self.get_event_manager()
+            .dispatch_listener(self.get_event_context(), name.into(), data)
+            .await
+    }
+
     async fn add_listener<EventData: Clone + Send + Sync + 'static>(
         &self,
         name: impl Into<String> + Send,
@@ -49,27 +55,20 @@ pub trait Listenable: Send + Sync + 'static {
                 })?;
                 handler(ctx.clone(), data.clone())
             },
-        ) as ListenerHandler<Self::EventContext>;
+        ) as EventHandler<Self::EventContext>;
 
-        // 代理给抽象的 EventManagerTrait
         self.get_event_manager()
             .add_listener(name.into(), wrapped_handler)
             .await
     }
 
-    async fn remove_listener(&self, name: &str, listener_id: &str) -> EchoResult<()> {
+    async fn remove_listener(&self, name: &str, listener_id: &str) {
         self.get_event_manager()
             .remove_listener(name, listener_id)
             .await
     }
 
-    async fn trigger_event<EventData: Send + Sync + 'static>(
-        &self,
-        name: impl Into<String> + Send,
-        data: EventData,
-    ) -> EchoResult<()> {
-        self.get_event_manager()
-            .trigger_event(self.get_event_context(), name.into(), data)
-            .await
+    async fn clear_all_listeners(&self) {
+        self.get_event_manager().clear_all_listeners().await
     }
 }
