@@ -1,19 +1,34 @@
 // EchoStream 浏览器客户端 SDK
 //
-// 基于 WebTransport（HTTP/3 + QUIC），与 Rust 服务端（echostream-web）互通，
-// 支持 RPC / Event / Stream 三种模式。
+// 基于 WebTransport（HTTP/3 + QUIC），与 Rust 服务端（echostream-web）互通。
+// 协议编解码由 Rust 编译的 WASM 提供（bindings/wasm），JS 只负责网络层，
+// 保证与 Rust 服务端的线缆格式单一事实来源、永不漂移。
 //
 // 用法：
 //   import { EchoStream } from "./echostream.js";
 //   const client = new EchoStream("https://127.0.0.1:4433");
 //   await client.connect();
-//   const sum = await client.request("add", [10, 20]);   // 载荷为数组 → Rust 元组
-//   client.onEvent("hello", (data) => console.log(data));
+//   const data = await client.request("add", [10, 20], { decode: "bytes" });
+//   client.onEvent("hello", (data) => console.log(new TextDecoder().decode(data)));
 //   await client.emit("join", "alice");
 //   const stream = await client.createStream("chat");
 //   await stream.send("hi"); await stream.finish();
 
-import { encode, encodeFrame, readFrame, Reader } from "./postcard.js";
+import init, {
+  encode_payload,
+  encode_message,
+  decode_message,
+  encode_frame,
+  decode_u64,
+  decode_string,
+  decode_bytes,
+} from "./wasm/echostream_wasm.js";
+
+let wasmReady = null;
+function ensureWasm() {
+  if (!wasmReady) wasmReady = init();
+  return wasmReady;
+}
 
 export class EchoStream {
   constructor(url) {
@@ -24,8 +39,9 @@ export class EchoStream {
     this.streamHandlers = new Map(); // name -> [handler]
   }
 
-  /** 连接服务端（自签名证书需先点击信任或使用 https 证书） */
+  /** 连接服务端（自签名证书需先访问 https://host:port 信任） */
   async connect() {
+    await ensureWasm();
     this.transport = new WebTransport(this.url);
     await this.transport.ready;
     this._receiveLoop();
@@ -39,12 +55,12 @@ export class EchoStream {
 
   // ======================== RPC ========================
 
-  /** 发起 RPC 请求，返回响应数据（Uint8Array）；可传 { decode } 指定解码 */
+  /** 发起 RPC 请求；options.decode: "bytes" | "string" | "number" | 自定义函数 */
   async request(name, payload, options = {}) {
     const stream = await this.transport.createBidirectionalStream();
     const writer = stream.writable.getWriter();
     const id = this.nextId++;
-    await writer.write(encodeFrame({
+    await writer.write(encode_frame({
       type: "request",
       id,
       name,
@@ -63,7 +79,7 @@ export class EchoStream {
 
   // ======================== Event ========================
 
-  /** 注册事件监听 */
+  /** 注册事件监听（回调收到事件载荷） */
   onEvent(name, handler) {
     const list = this.eventHandlers.get(name) ?? [];
     list.push(handler);
@@ -74,7 +90,7 @@ export class EchoStream {
   async emit(name, payload) {
     const stream = await this.transport.createUnidirectionalStream();
     const writer = stream.getWriter();
-    await writer.write(encodeFrame({
+    await writer.write(encode_frame({
       type: "event",
       id: this.nextId++,
       name,
@@ -99,8 +115,8 @@ export class EchoStream {
     const id = this.nextId++;
     let seq = 0n;
     return {
-      async send(payload) {
-        await writer.write(encodeFrame({
+      send: async (payload) => {
+        await writer.write(encode_frame({
           type: "stream",
           id,
           name,
@@ -108,8 +124,8 @@ export class EchoStream {
           senderTs: BigInt(Date.now()),
           data: this._toBytes(payload),
         }));
-      }.bind(this),
-      async finish() {
+      },
+      finish: async () => {
         await writer.close();
       },
     };
@@ -118,12 +134,11 @@ export class EchoStream {
   // ======================== 内部 ========================
 
   /** 后台接收循环：处理服务端主动发来的 RPC / 事件 / 流 */
-  async _receiveLoop() {
-    const transport = this.transport;
+  _receiveLoop() {
     // 事件与流的 uni 流
     (async () => {
       try {
-        const reader = transport.incomingUnidirectionalStreams.getReader();
+        const reader = this.transport.incomingUnidirectionalStreams.getReader();
         while (true) {
           const { value: stream, done } = await reader.read();
           if (done) break;
@@ -134,7 +149,7 @@ export class EchoStream {
     // 服务端主动 RPC 的 bi 流
     (async () => {
       try {
-        const reader = transport.incomingBidirectionalStreams.getReader();
+        const reader = this.transport.incomingBidirectionalStreams.getReader();
         while (true) {
           const { value: stream, done } = await reader.read();
           if (done) break;
@@ -163,7 +178,7 @@ export class EchoStream {
     const msg = await readFrame(reader);
     if (msg === null) return;
     if (msg.type === "request") {
-      // 服务端主动 RPC：尝试调用注册的处理器并回写响应
+      // 服务端主动 RPC：调用注册的处理器并回写响应
       const handlers = this.eventHandlers.get(`rpc:${msg.name}`) ?? [];
       const writer = stream.writable.getWriter();
       let resp;
@@ -178,7 +193,7 @@ export class EchoStream {
       } else {
         resp = { type: "response", id: msg.id, code: 3, message: "handler not found", data: new Uint8Array(0) };
       }
-      await writer.write(encodeFrame(resp));
+      await writer.write(encode_frame(resp));
       await writer.close();
     }
   }
@@ -199,17 +214,37 @@ export class EchoStream {
 
   _toBytes(payload) {
     if (payload instanceof Uint8Array) return payload;
-    if (typeof payload === "string") return encode(payload);
-    return encode(payload);
+    return encode_payload(payload);
   }
 
   _fromBytes(data, decode) {
-    if (decode === "string") return new TextDecoder().decode(data);
+    if (decode === "string") return decode_string(data);
     if (decode === "bytes") return data;
+    if (decode === "number") return decode_u64(data);
     if (typeof decode === "function") return decode(data);
-    if (decode === "number") return new Reader(data).varint();
-    return data; // 默认返回原始字节，由调用方决定
+    return data;
   }
 }
 
-export { encode } from "./postcard.js";
+// ======================== 帧读取（网络层，JS 实现） ========================
+
+export async function readFrame(reader) {
+  const lenBytes = await readExactly(reader, 4);
+  if (lenBytes === null) return null;
+  const len = new DataView(lenBytes.buffer).getUint32(0, true);
+  const payload = await readExactly(reader, len);
+  if (payload === null) throw new Error("帧数据不完整");
+  return decode_message(payload);
+}
+
+async function readExactly(reader, len) {
+  const buf = new Uint8Array(len);
+  let got = 0;
+  while (got < len) {
+    const { value, done } = await reader.read();
+    if (done) return got === 0 ? null : (() => { throw new Error("帧数据不完整"); })();
+    buf.set(value.subarray(0, len - got), got);
+    got += value.length;
+  }
+  return buf;
+}

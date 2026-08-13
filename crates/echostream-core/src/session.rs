@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
+use bytes::Bytes;
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
 use echostream_transport::Endpoint;
 use serde::{Serialize, de::DeserializeOwned};
@@ -99,6 +100,62 @@ impl Session {
     }
 
     // ==================== 双向主动通信 ====================
+
+    /// 发起 RPC 请求（载荷为已编码字节，不做二次序列化；供各语言绑定使用）
+    pub async fn request_raw(&self, name: &str, payload: Bytes) -> Result<Bytes> {
+        self.request_raw_with_timeout(name, payload, self.inner.timeout)
+            .await
+    }
+
+    /// 发起 RPC 请求（指定超时，载荷为已编码字节）
+    pub async fn request_raw_with_timeout(
+        &self,
+        name: &str,
+        payload: Bytes,
+        timeout: std::time::Duration,
+    ) -> Result<Bytes> {
+        let mut stream = self.inner.conn.open_bi().await?;
+        let id = self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed);
+        stream
+            .write_message(&Message::Request(RequestMsg {
+                id,
+                name: name.to_string(),
+                data: payload,
+            }))
+            .await?;
+        stream.finish().await?;
+
+        let resp = tokio::time::timeout(timeout, async {
+            loop {
+                match stream.read_message().await? {
+                    Some(Message::Response(r)) if r.id == id => return Ok(r),
+                    Some(_) => continue, // 忽略不匹配的帧
+                    None => return Err(Error::SessionClosed),
+                }
+            }
+        })
+        .await
+        .map_err(|_| Error::Timeout(id))??;
+
+        if resp.code.is_success() {
+            Ok(resp.data)
+        } else {
+            Err(Error::Rpc(resp.code.0, resp.message.unwrap_or_default()))
+        }
+    }
+
+    /// 发送单向事件（载荷为已编码字节）
+    pub async fn emit_raw(&self, name: &str, payload: Bytes) -> Result<()> {
+        let mut stream = self.inner.conn.open_uni().await?;
+        stream
+            .write_message(&Message::Event(EventMsg {
+                id: self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed),
+                name: name.to_string(),
+                data: payload,
+            }))
+            .await?;
+        stream.finish().await
+    }
 
     /// 发起 RPC 请求并等待响应（使用默认超时）
     pub async fn request<Req: Serialize + Send, Resp: DeserializeOwned + Send>(

@@ -3,6 +3,13 @@
 基于 **WebTransport**（HTTP/3 + QUIC）的浏览器客户端 SDK，与 Rust 服务端
 （`echostream-web` crate）互通，支持 RPC / Event / Stream 三种模式。
 
+## 架构
+
+协议编解码由 **Rust 编译的 WASM**（`bindings/wasm` crate）提供，JS 只负责
+WebTransport 网络层 —— 与 Rust 服务端的线缆格式单一事实来源，协议演进
+无需跨语言同步修改。浏览器平台限制（无法监听端口）决定了 Web 端只提供
+客户端能力；服务端能力由 Rust / Node / Python 提供。
+
 ## 使用
 
 ```html
@@ -46,6 +53,14 @@
 ## 文件
 
 - `echostream.js` — SDK 入口（连接 / RPC / Event / Stream / 事件监听）
-- `postcard.js` — 协议编解码（postcard 线缆格式 + Message 帧）
+- `wasm/` — Rust 编译的协议编解码模块（`echostream_wasm.js` + `.wasm`，由 `bindings/wasm` 构建）
 - `index.html` — 浏览器 demo
 - `echostream.test.mjs` — 与 Rust 侧交叉验证的编解码测试（`node echostream.test.mjs`）
+
+## 重新构建 WASM 模块
+
+```bash
+cargo build -p echostream-wasm --target wasm32-unknown-unknown --release
+wasm-bindgen --target web --out-dir sdk/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+```

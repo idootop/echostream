@@ -7,6 +7,8 @@ members = [
     "crates/echostream-derive",
     "crates/echostream-discovery",
     "crates/echostream-web",
+    "bindings/node",
+    "bindings/wasm",
 ]
 resolver = "2"
 

@@ -48,9 +48,44 @@ impl Client {
         self.session.create_stream(name).await
     }
 
+    /// 发起 RPC 请求（载荷为已编码字节，供各语言绑定使用）
+    pub async fn request_raw(
+        &self,
+        name: &str,
+        payload: bytes::Bytes,
+    ) -> echostream_proto::Result<bytes::Bytes> {
+        self.session.request_raw(name, payload).await
+    }
+
+    /// 发送单向事件（载荷为已编码字节）
+    pub async fn emit_raw(
+        &self,
+        name: &str,
+        payload: bytes::Bytes,
+    ) -> echostream_proto::Result<()> {
+        self.session.emit_raw(name, payload).await
+    }
+
     /// 关闭连接
     pub fn close(&self) {
         self.session.close();
+    }
+
+    // ==================== 运行时注册（动态添加处理器） ====================
+
+    /// 运行时注册事件监听
+    pub fn add_event_handler<H: DynEventHandler>(&self, handler: H) {
+        self.router.add_event(handler);
+    }
+
+    /// 运行时注册 RPC 处理器（处理服务端主动调用）
+    pub fn add_rpc_handler<H: DynRpcHandler>(&self, handler: H) {
+        self.router.add_rpc(handler);
+    }
+
+    /// 运行时注册流处理器
+    pub fn add_stream_handler<H: StreamHandler>(&self, handler: H) {
+        self.router.add_stream(handler);
     }
 }
 

@@ -1,0 +1,17 @@
+{
+  "name": "echostream-node",
+  "version": "0.1.0",
+  "description": "EchoStream Node.js binding — 基于 QUIC 的双向 RPC 与流传输",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "napi build --platform --release",
+    "test": "node test/index.test.cjs"
+  },
+  "napi": {
+    "name": "echostream-node"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  }
+}

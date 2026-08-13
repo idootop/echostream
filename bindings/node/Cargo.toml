@@ -1,0 +1,21 @@
+[package]
+name = "echostream-node"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "EchoStream Node.js binding (napi-rs)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi8", "async"] }
+napi-derive = "2"
+echostream = { path = "../../crates/echostream" }
+echostream-core = { path = "../../crates/echostream-core" }
+bytes = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+[build-dependencies]
+napi-build = "2"

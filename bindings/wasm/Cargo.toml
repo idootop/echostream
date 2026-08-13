@@ -1,0 +1,16 @@
+[package]
+name = "echostream-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "EchoStream WASM binding：协议编解码（与 Rust 服务端共享同一份实现）"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2.100"
+js-sys = "0.3"
+echostream-proto = { path = "../../crates/echostream-proto" }
+postcard = { workspace = true }
+bytes = { workspace = true }
