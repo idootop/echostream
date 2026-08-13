@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_clientcorehandle_free: (a: number, b: number) => void;
+export const clientcorehandle_build_datagram_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const clientcorehandle_build_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const clientcorehandle_build_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
 export const clientcorehandle_build_stream_end: (a: number, b: number, c: bigint) => void;

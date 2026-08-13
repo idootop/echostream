@@ -47,6 +47,21 @@ pub trait Endpoint: Send + Sync + 'static {
     fn peer_addr(&self) -> SocketAddr;
     /// 关闭连接
     fn close(&self);
+
+    /// 是否支持数据报（不可靠通道）
+    fn supports_datagram(&self) -> bool {
+        false
+    }
+
+    /// 发送数据报（不可靠、无序，适合高频事件/音视频帧；默认不支持）
+    fn send_datagram(&self, _data: Bytes) -> Result<()> {
+        Err(Error::Protocol("数据报通道未启用".into()))
+    }
+
+    /// 接收数据报（默认不支持）
+    async fn recv_datagram(&self) -> Result<Bytes> {
+        Err(Error::Protocol("数据报通道未启用".into()))
+    }
 }
 
 /// 监听器抽象（适配 QUIC / WebTransport / WebSocket 等不同传输的服务端）

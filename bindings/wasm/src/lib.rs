@@ -445,6 +445,12 @@ impl ClientCoreHandle {
         encode_frame_bytes(&msg)
     }
 
+    /// 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
+    pub fn build_datagram_event(&mut self, name: &str, payload: &[u8]) -> Vec<u8> {
+        self.core
+            .build_datagram_event(name, Bytes::copy_from_slice(payload))
+    }
+
     /// 构造流结束标记（WebSocket 传输的流关闭）
     pub fn build_stream_end(&mut self, id: u64) -> Result<Vec<u8>, JsValue> {
         let msg = self.core.build_stream_end(id);

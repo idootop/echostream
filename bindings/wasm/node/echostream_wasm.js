@@ -366,6 +366,29 @@ class ClientCoreHandle {
         }
     }
     /**
+     * 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
+     * @param {string} name
+     * @param {Uint8Array} payload
+     * @returns {Uint8Array}
+     */
+    build_datagram_event(name, payload) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_datagram_event(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v3;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * 创建状态机
      */
     constructor() {

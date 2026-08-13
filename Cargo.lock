@@ -287,6 +287,7 @@ name = "echostream"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
  "echostream-core",
  "echostream-derive",
  "echostream-discovery",
@@ -305,6 +306,7 @@ dependencies = [
  "bytes",
  "echostream-proto",
  "futures",
+ "postcard",
 ]
 
 [[package]]

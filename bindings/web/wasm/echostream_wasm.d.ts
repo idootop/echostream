@@ -29,6 +29,10 @@ export class ClientCoreHandle {
    */
   build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;
   /**
+   * 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
+   */
+  build_datagram_event(name: string, payload: Uint8Array): Uint8Array;
+  /**
    * 创建状态机
    */
   constructor();
@@ -96,6 +100,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_clientcorehandle_free: (a: number, b: number) => void;
+  readonly clientcorehandle_build_datagram_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly clientcorehandle_build_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly clientcorehandle_build_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
   readonly clientcorehandle_build_stream_end: (a: number, b: number, c: bigint) => void;

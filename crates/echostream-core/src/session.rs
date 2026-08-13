@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
-use echostream_proto::endpoint::Endpoint;
+use echostream_proto::endpoint::{Endpoint, FrameIo};
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -31,6 +31,8 @@ struct SessionInner {
     state: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
     next_msg_id: AtomicU64,
     timeout: std::time::Duration,
+    /// 事件通道：复用一条单向流批量发送事件帧（避免每次 emit 的开流开销）
+    event_channel: tokio::sync::Mutex<Option<Box<dyn FrameIo>>>,
 }
 
 impl Session {
@@ -54,6 +56,7 @@ impl Session {
                 state: RwLock::new(HashMap::new()),
                 next_msg_id: AtomicU64::new(1),
                 timeout,
+                event_channel: tokio::sync::Mutex::new(None),
             }),
         }
     }
@@ -145,16 +148,26 @@ impl Session {
     }
 
     /// 发送单向事件（载荷为已编码字节）
+    ///
+    /// 复用事件通道（长连接单向流批量发送），避免每次 emit 的开流开销。
     pub async fn emit_raw(&self, name: &str, payload: Bytes) -> Result<()> {
-        let mut stream = self.inner.conn.open_uni().await?;
-        stream
-            .write_message(&Message::Event(EventMsg {
-                id: self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed),
-                name: name.to_string(),
-                data: payload,
-            }))
-            .await?;
-        stream.finish().await
+        let msg = Message::Event(EventMsg {
+            id: self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed),
+            name: name.to_string(),
+            data: payload,
+        });
+        let mut chan = self.inner.event_channel.lock().await;
+        // 通道不存在或已失效时重建
+        if chan.is_none() {
+            *chan = Some(self.inner.conn.open_uni().await?);
+        }
+        if let Err(e) = chan.as_mut().unwrap().write_message(&msg).await {
+            // 通道失效（对端关闭）：重建后重试一次
+            tracing::debug!("事件通道失效，重建: {e}");
+            *chan = Some(self.inner.conn.open_uni().await?);
+            chan.as_mut().unwrap().write_message(&msg).await?;
+        }
+        Ok(())
     }
 
     /// 发起 RPC 请求并等待响应（使用默认超时）
@@ -215,6 +228,22 @@ impl Session {
             }))
             .await?;
         stream.finish().await
+    }
+
+    /// 发送不可靠事件（数据报通道；不保证到达与顺序，吞吐更高）
+    ///
+    /// 载荷为已编码字节；传输不支持数据报时返回错误（调用方可降级为 `emit_raw`）。
+    pub async fn emit_unreliable_raw(&self, name: &str, payload: Bytes) -> Result<()> {
+        if !self.inner.conn.supports_datagram() {
+            return Err(Error::Protocol("传输不支持数据报通道".into()));
+        }
+        let msg = Message::Event(EventMsg {
+            id: self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed),
+            name: name.to_string(),
+            data: payload,
+        });
+        let data = postcard::to_allocvec(&msg).map_err(|e| Error::Serialization(e.to_string()))?;
+        self.inner.conn.send_datagram(Bytes::from(data))
     }
 
     /// 创建流（推送连续数据）

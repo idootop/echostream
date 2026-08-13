@@ -106,6 +106,19 @@ impl WebServer {
 /// 处理单个连接的消息循环（与 QUIC 服务端相同的分派逻辑）
 async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<ServerContext>) {
     let conn = session.conn();
+    // 数据报接收任务（不可靠事件通道）
+    if conn.supports_datagram() {
+        let s = session.clone();
+        let r = router.clone();
+        tokio::spawn(async move {
+            let conn = s.conn();
+            while let Ok(data) = conn.recv_datagram().await {
+                if let Ok(msg) = postcard::from_bytes(&data) {
+                    r.dispatch_inbound_datagram(&s, msg).await;
+                }
+            }
+        });
+    }
     loop {
         tokio::select! {
             bi = conn.accept_bi() => {
@@ -130,9 +143,23 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
                 match uni {
                     Ok(mut recv) => match recv.read_message().await {
                         Ok(Some(Message::Event(event))) => {
-                            router.dispatch_event(&session, event).await;
-                            // 读尽剩余帧，避免 drop 未读完的接收流触发对端写错误
-                            while let Ok(Some(_)) = recv.read_message().await {}
+                            // 事件流可能是长连接通道（复用流）或一次性流：
+                            // 统一交给读任务处理（首帧 + 持续帧），主循环不阻塞在分发上
+                            let s = session.clone();
+                            let r = router.clone();
+                            tokio::spawn(async move {
+                                let mut recv = recv;
+                                r.dispatch_event(&s, event).await;
+                                loop {
+                                    match recv.read_message().await {
+                                        Ok(Some(Message::Event(e))) => {
+                                            r.dispatch_event(&s, e).await;
+                                        }
+                                        Ok(Some(_)) => continue,
+                                        Ok(None) | Err(_) => break,
+                                    }
+                                }
+                            });
                         }
                         Ok(Some(Message::Stream(frame))) => {
                             router.dispatch_stream(&session, recv, frame).await;

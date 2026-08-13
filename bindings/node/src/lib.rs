@@ -55,6 +55,16 @@ impl JsClient {
         self.client.emit_raw(&name, data).await.map_err(to_napi_err)
     }
 
+    /// 发送不可靠事件（数据报通道；连接不支持时返回错误）
+    #[napi]
+    pub async fn emit_unreliable(&self, name: String, payload: Vec<u8>) -> napi::Result<()> {
+        let data = Bytes::from(payload);
+        self.client
+            .emit_unreliable_raw(&name, data)
+            .await
+            .map_err(to_napi_err)
+    }
+
     /// 创建流（推送连续数据）
     #[napi]
     pub async fn create_stream(&self, name: String) -> napi::Result<JsStream> {

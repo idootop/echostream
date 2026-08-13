@@ -29,6 +29,10 @@ export class ClientCoreHandle {
    */
   build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;
   /**
+   * 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
+   */
+  build_datagram_event(name: string, payload: Uint8Array): Uint8Array;
+  /**
    * 创建状态机
    */
   constructor();

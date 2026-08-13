@@ -13,6 +13,7 @@ description = "WebTransport 服务端与浏览器客户端支持"
 
 [dependencies]
 echostream-proto = { workspace = true }
+postcard = { workspace = true }
 echostream-core = { workspace = true }
 echostream-transport = { workspace = true }
 

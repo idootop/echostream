@@ -124,6 +124,13 @@ impl Router {
         }
     }
 
+    /// 分派数据报（不可靠通道：事件）
+    pub async fn dispatch_inbound_datagram(&self, session: &Session, msg: Message) {
+        if let Message::Event(event) = msg {
+            self.dispatch_event(session, event).await
+        }
+    }
+
     /// 分派事件（单向流）
     pub async fn dispatch_event(&self, session: &Session, msg: EventMsg) {
         // 中间件链

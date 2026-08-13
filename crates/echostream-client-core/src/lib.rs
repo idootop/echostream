@@ -58,6 +58,16 @@ impl ClientCore {
         )
     }
 
+    /// 构造数据报事件载荷（裸 postcard Message，无长度前缀；用于不可靠通道）
+    pub fn build_datagram_event(&mut self, name: &str, payload: Bytes) -> Vec<u8> {
+        let msg = Message::Event(EventMsg {
+            id: self.next_id(),
+            name: name.to_string(),
+            data: payload,
+        });
+        postcard::to_allocvec(&msg).expect("编码失败")
+    }
+
     /// 构造事件帧（自动分配 id）
     pub fn build_event(&mut self, name: &str, payload: Bytes) -> Message {
         Message::Event(EventMsg {

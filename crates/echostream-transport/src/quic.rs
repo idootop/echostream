@@ -95,8 +95,9 @@ impl ToEcho for quinn::SendDatagramError {
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut cfg = quinn::TransportConfig::default();
     cfg.keep_alive_interval(Some(Duration::from_secs(10)));
-    cfg.datagram_receive_buffer_size(Some(64));
-    cfg.datagram_send_buffer_size(64);
+    // quinn 0.11 的 datagram 上限 = datagram_receive_buffer_size（对端通告值）
+    cfg.datagram_receive_buffer_size(Some(4096));
+    cfg.datagram_send_buffer_size(4096);
     Arc::new(cfg)
 }
 
@@ -256,6 +257,18 @@ impl Endpoint for QuicConn {
 
     fn close(&self) {
         self.conn.close(0u32.into(), b"closed");
+    }
+
+    fn supports_datagram(&self) -> bool {
+        true
+    }
+
+    fn send_datagram(&self, data: Bytes) -> Result<()> {
+        to_echo(self.conn.send_datagram(data))
+    }
+
+    async fn recv_datagram(&self) -> Result<Bytes> {
+        to_echo(self.conn.read_datagram().await)
     }
 }
 

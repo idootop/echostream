@@ -5,6 +5,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
+use bytes::Bytes;
 use echostream::prelude::*;
 
 /// RPC：回显（最小负载往返）
@@ -106,7 +107,26 @@ async fn main() -> Result<()> {
         EVENT_COUNT.load(Ordering::Relaxed)
     );
 
-    // ===== 4. 流吞吐（1MB × 200 帧 = 200MB） =====
+    // ===== 4. 不可靠事件吞吐（数据报通道，10 万事件） =====
+    static DGRAM_COUNT: AtomicU64 = AtomicU64::new(0);
+    let client2 = client.clone();
+    let _ = client2; // 占位（datagram 事件计数由服务端 handler 完成）
+    let start = Instant::now();
+    for _ in 0..EVENTS {
+        client
+            .emit_unreliable_raw("bench_event", Bytes::from(payload.clone()))
+            .await?;
+    }
+    let elapsed = start.elapsed();
+    let dps = EVENTS as f64 / elapsed.as_secs_f64();
+    println!("[bench] 不可靠事件吞吐: {dps:.0} evt/s（{EVENTS} 事件，64B，数据报）");
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    println!(
+        "[bench] 服务端收到不可靠事件: {}",
+        EVENT_COUNT.load(Ordering::Relaxed) - EVENTS
+    );
+
+    // ===== 5. 流吞吐（1MB × 200 帧 = 200MB） =====
     let mut stream = client.create_stream("bench_stream").await?;
     let chunk = vec![1u8; 1024 * 1024];
     const FRAMES: u32 = 200;

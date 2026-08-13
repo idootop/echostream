@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use echostream_proto::{Error, Message, Result};
 use echostream_transport::{Endpoint, FrameIo, FrameRead, encode_message, read_message_frame};
 
@@ -68,6 +69,25 @@ impl Endpoint for WtConn {
 
     fn close(&self) {
         self.conn.close(0u32.into(), b"closed");
+    }
+
+    fn supports_datagram(&self) -> bool {
+        true
+    }
+
+    fn send_datagram(&self, data: Bytes) -> Result<()> {
+        self.conn
+            .send_datagram(data)
+            .map_err(|e| Error::Io(e.to_string()))
+    }
+
+    async fn recv_datagram(&self) -> Result<Bytes> {
+        let d = self
+            .conn
+            .receive_datagram()
+            .await
+            .map_err(|e| Error::Io(e.to_string()))?;
+        Ok(Bytes::from(d.payload().to_vec()))
     }
 }
 

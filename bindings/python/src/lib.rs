@@ -81,6 +81,14 @@ impl Client {
             .map_err(to_py_err)
     }
 
+    /// 发送不可靠事件（数据报通道；连接不支持时返回错误）
+    fn emit_unreliable(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<()> {
+        let data = Bytes::copy_from_slice(payload);
+        py.detach(|| block_on(self.client.emit_unreliable_raw(name, data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
     /// 创建流（推送连续数据）
     fn create_stream(&self, py: Python<'_>, name: &str) -> PyResult<Stream> {
         let stream = py

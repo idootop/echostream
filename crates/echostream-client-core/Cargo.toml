@@ -14,4 +14,5 @@ description = "无 I/O 客户端状态机：RPC 匹配、事件路由、流管�
 [dependencies]
 echostream-proto = { workspace = true }
 bytes = { workspace = true }
+postcard = { workspace = true }
 futures = "0.3"

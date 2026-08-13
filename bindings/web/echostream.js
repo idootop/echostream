@@ -153,6 +153,16 @@ export class EchoStream {
     await this._send(this.core.build_event(name, this._toBytes(payload)));
   }
 
+  /** 发送不可靠事件（WebTransport/QUIC 数据报通道，吞吐更高；WebSocket 降级为可靠发送） */
+  emitUnreliable(name, payload) {
+    const data = this.core.build_datagram_event(name, this._toBytes(payload));
+    if (this.isWs) {
+      this.ws.send(data); // ws 无数据报通道：降级可靠发送
+    } else if (this.transport) {
+      this.transport.sendDatagram(data);
+    }
+  }
+
   // ======================== Stream ========================
 
   async createStream(name) {

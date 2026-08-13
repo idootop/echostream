@@ -48,6 +48,15 @@ impl Client {
         self.session.create_stream(name).await
     }
 
+    /// 发送不可靠事件（数据报通道）
+    pub async fn emit_unreliable_raw(
+        &self,
+        name: &str,
+        payload: bytes::Bytes,
+    ) -> echostream_proto::Result<()> {
+        self.session.emit_unreliable_raw(name, payload).await
+    }
+
     /// 发起 RPC 请求（载荷为已编码字节，供各语言绑定使用）
     pub async fn request_raw(
         &self,
@@ -164,6 +173,18 @@ impl ClientBuilder {
 /// 客户端接收循环：处理服务端主动发来的 RPC / 事件 / 流
 async fn receive_loop(client: Client) {
     let conn = client.session.conn();
+    // 数据报接收任务（不可靠事件通道）
+    if conn.supports_datagram() {
+        let c = client.clone();
+        tokio::spawn(async move {
+            let conn = c.session.conn();
+            while let Ok(data) = conn.recv_datagram().await {
+                if let Ok(msg) = postcard::from_bytes(&data) {
+                    c.router.dispatch_inbound_datagram(c.session(), msg).await;
+                }
+            }
+        });
+    }
     loop {
         tokio::select! {
             bi = conn.accept_bi() => {
