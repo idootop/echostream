@@ -48,8 +48,9 @@
 - [ ] 客户端钩子（on_connect/on_disconnect）
 - [ ] 示例补齐：广播、认证中间件
 - [x] 发布准备：多端 README 与 npm/PyPI 元数据完善；crates 打包检查验证发布顺序
+- [x] 基准测试：RPC 延迟 54.6µs、并发 65.6k req/s、事件 200k evt/s、流 155.7 MiB/s（docs/BENCHMARK.md）
 - [ ] 正式发布 v0.1（按序：proto → client-core → transport → core → derive → discovery → web → echostream）
-- [ ] 基准测试与性能调优
+- [ ] 性能调优（可选方向：datagram 事件/多流并行/连接池）
 
 ### ✅ P3 多端支持（核心部分完成）
 
