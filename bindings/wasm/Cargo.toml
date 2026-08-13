@@ -12,5 +12,6 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "0.2.100"
 js-sys = "0.3"
 echostream-proto = { path = "../../crates/echostream-proto" }
+echostream-client-core = { path = "../../crates/echostream-client-core" }
 postcard = { workspace = true }
 bytes = { workspace = true }

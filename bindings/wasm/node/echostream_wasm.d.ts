@@ -1,6 +1,47 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export class ClientCoreHandle {
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * 构造事件帧
+   */
+  build_event(name: string, payload: Uint8Array): Uint8Array;
+  /**
+   * 打开流：分配流 id
+   */
+  open_stream(name: string): bigint;
+  /**
+   * 构造响应帧（服务端主动调用的异步回复）
+   */
+  build_response(id: bigint, payload: Uint8Array): Uint8Array;
+  /**
+   * 处理入站帧：返回需要写回对端的响应帧（对端主动调用且同步完成时）
+   */
+  handle_inbound(frame: Uint8Array): Uint8Array | undefined;
+  /**
+   * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
+   */
+  build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;
+  /**
+   * 创建状态机
+   */
+  constructor();
+  /**
+   * 注册 RPC 处理器（处理对端主动调用；回调返回响应字节或 null 表示异步处理）
+   */
+  on_rpc(name: string, callback: Function): void;
+  /**
+   * 发起 RPC：返回请求帧（长度前缀 + Message），响应到达时调用 `resolve(data: Uint8Array)`
+   */
+  request(name: string, payload: Uint8Array, resolve: Function): Uint8Array;
+  /**
+   * 注册事件监听（回调：`(name: string, data: Uint8Array) => void`）
+   */
+  on_event(name: string, callback: Function): void;
+}
+
 /**
  * 解码 bytes（长度前缀 + 字节）
  */

@@ -55,8 +55,10 @@
 - [x] Web：浏览器 SDK（WebTransport 网络层 + **Rust 编译 WASM 编解码**，单一事实来源）
 - [x] Node.js：完整 client + server 绑定（napi-rs），端到端测试通过
 - [x] Python：完整 client + server 绑定（PyO3，同步 API + GIL 释放），端到端测试通过
-- [ ] Web：客户端核心逻辑（RPC 状态机/事件路由）WASM 化（当前 JS 网络层 + WASM 编解码，
-      JS 侧仍有 RPC 匹配/事件分发逻辑 —— 下一步抽取 ClientCore 无 I/O 状态机编译进 WASM）
+- [x] Web：客户端核心逻辑 WASM 化 —— 新增 `echostream-client-core`（无 I/O 状态机：
+      RPC id 匹配、事件路由、服务端主动调用、流序号管理），编译进 WASM，
+      JS SDK 只剩网络层（读帧喂状态机、写帧出状态机），与 Rust 原生客户端共享同一份逻辑
+- [x] 状态机交叉验证：RPC 响应匹配（错误 id 忽略）、事件路由、主动调用、流序号全过
 
 ## 设计决策记录
 

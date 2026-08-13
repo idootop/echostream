@@ -362,3 +362,130 @@ fn get_bytes(obj: &Object, key: &str) -> Result<Bytes, JsValue> {
         .ok_or_else(|| js_err(&format!("字段 {key} 必须是 Uint8Array")))?;
     Ok(Bytes::from(arr.to_vec()))
 }
+
+// ======================== 无 I/O 客户端状态机 ========================
+
+/// 客户端核心状态机（WASM 句柄）
+///
+/// RPC id 分配/响应匹配、事件路由、服务端主动调用处理全部在 Rust 侧，
+/// JS 网络层只需：读帧 → `handle_inbound`，写帧 ← 各 build 方法产物。
+#[wasm_bindgen]
+pub struct ClientCoreHandle {
+    core: echostream_client_core::ClientCore,
+}
+
+impl Default for ClientCoreHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 帧编码（Message → 长度前缀帧）
+fn encode_frame_bytes(msg: &Message) -> Result<Vec<u8>, JsValue> {
+    let payload = postcard::to_allocvec(msg).map_err(|e| js_err(&format!("编码失败: {e}")))?;
+    let mut frame = Vec::with_capacity(4 + payload.len());
+    frame.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    frame.extend_from_slice(&payload);
+    Ok(frame)
+}
+
+#[wasm_bindgen]
+impl ClientCoreHandle {
+    /// 创建状态机
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            core: echostream_client_core::ClientCore::new(),
+        }
+    }
+
+    /// 发起 RPC：返回请求帧（长度前缀 + Message），响应到达时调用 `resolve(data: Uint8Array)`
+    pub fn request(
+        &mut self,
+        name: &str,
+        payload: &[u8],
+        resolve: js_sys::Function,
+    ) -> Result<Vec<u8>, JsValue> {
+        let (_, msg) =
+            self.core
+                .build_request(name, Bytes::copy_from_slice(payload), move |data: Bytes| {
+                    let arr = Uint8Array::from(&data[..]);
+                    let _ = resolve.call1(&JsValue::NULL, &arr.into());
+                });
+        encode_frame_bytes(&msg)
+    }
+
+    /// 构造事件帧
+    pub fn build_event(&mut self, name: &str, payload: &[u8]) -> Result<Vec<u8>, JsValue> {
+        let msg = self.core.build_event(name, Bytes::copy_from_slice(payload));
+        encode_frame_bytes(&msg)
+    }
+
+    /// 打开流：分配流 id
+    pub fn open_stream(&mut self, name: &str) -> u64 {
+        self.core.open_stream(name)
+    }
+
+    /// 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
+    pub fn build_stream_frame(
+        &mut self,
+        id: u64,
+        name: &str,
+        payload: &[u8],
+        sender_ts: u64,
+    ) -> Result<Vec<u8>, JsValue> {
+        let msg =
+            self.core
+                .build_stream_frame(id, name, Bytes::copy_from_slice(payload), sender_ts);
+        encode_frame_bytes(&msg)
+    }
+
+    /// 构造响应帧（服务端主动调用的异步回复）
+    pub fn build_response(&mut self, id: u64, payload: &[u8]) -> Result<Vec<u8>, JsValue> {
+        let msg = self
+            .core
+            .build_response(id, Bytes::copy_from_slice(payload));
+        encode_frame_bytes(&msg)
+    }
+
+    /// 注册事件监听（回调：`(name: string, data: Uint8Array) => void`）
+    pub fn on_event(&mut self, name: &str, callback: js_sys::Function) {
+        let name_js = JsValue::from_str(name);
+        self.core.on_event(name, move |data: Bytes| {
+            let arr = Uint8Array::from(&data[..]);
+            let _ = callback.call2(&JsValue::NULL, &name_js, &arr.into());
+        });
+    }
+
+    /// 注册 RPC 处理器（处理对端主动调用；回调返回响应字节或 null 表示异步处理）
+    pub fn on_rpc(&mut self, name: &str, callback: js_sys::Function) {
+        let name_js = JsValue::from_str(name);
+        self.core.on_rpc(name, move |data: Bytes| {
+            let arr = Uint8Array::from(&data[..]);
+            match callback.call2(&JsValue::NULL, &name_js, &arr.into()) {
+                Ok(ret) if !ret.is_null() && !ret.is_undefined() => {
+                    let bytes = ret
+                        .dyn_ref::<Uint8Array>()
+                        .map(|a| a.to_vec())
+                        .unwrap_or_default();
+                    Some(Bytes::from(bytes))
+                }
+                _ => None, // 异步处理：调用方稍后 build_response
+            }
+        });
+    }
+
+    /// 处理入站帧：返回需要写回对端的响应帧（对端主动调用且同步完成时）
+    pub fn handle_inbound(&mut self, frame: &[u8]) -> Result<Option<Vec<u8>>, JsValue> {
+        if frame.len() < 4 {
+            return Err(js_err("帧长度不足"));
+        }
+        let len = u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]) as usize;
+        let msg: Message = postcard::from_bytes(&frame[4..4 + len])
+            .map_err(|e| js_err(&format!("帧解码失败: {e}")))?;
+        match self.core.handle_inbound(msg) {
+            Some(resp) => Ok(Some(encode_frame_bytes(&resp)?)),
+            None => Ok(None),
+        }
+    }
+}

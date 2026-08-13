@@ -1,6 +1,16 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const __wbg_clientcorehandle_free: (a: number, b: number) => void;
+export const clientcorehandle_build_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+export const clientcorehandle_build_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
+export const clientcorehandle_build_stream_frame: (a: number, b: number, c: bigint, d: number, e: number, f: number, g: number, h: bigint) => void;
+export const clientcorehandle_handle_inbound: (a: number, b: number, c: number, d: number) => void;
+export const clientcorehandle_new: () => number;
+export const clientcorehandle_on_event: (a: number, b: number, c: number, d: number) => void;
+export const clientcorehandle_on_rpc: (a: number, b: number, c: number, d: number) => void;
+export const clientcorehandle_open_stream: (a: number, b: number, c: number) => bigint;
+export const clientcorehandle_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const decode_bytes: (a: number, b: number, c: number) => void;
 export const decode_message: (a: number, b: number, c: number) => void;
 export const decode_string: (a: number, b: number, c: number) => void;

@@ -198,6 +198,212 @@ if (!('encodeInto' in cachedTextEncoder)) {
 
 let WASM_VECTOR_LEN = 0;
 
+const ClientCoreHandleFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_clientcorehandle_free(ptr >>> 0, 1));
+
+/**
+ * 客户端核心状态机（WASM 句柄）
+ *
+ * RPC id 分配/响应匹配、事件路由、服务端主动调用处理全部在 Rust 侧，
+ * JS 网络层只需：读帧 → `handle_inbound`，写帧 ← 各 build 方法产物。
+ */
+class ClientCoreHandle {
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        ClientCoreHandleFinalization.unregister(this);
+        return ptr;
+    }
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_clientcorehandle_free(ptr, 0);
+    }
+    /**
+     * 构造事件帧
+     * @param {string} name
+     * @param {Uint8Array} payload
+     * @returns {Uint8Array}
+     */
+    build_event(name, payload) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_event(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v3;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * 打开流：分配流 id
+     * @param {string} name
+     * @returns {bigint}
+     */
+    open_stream(name) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.clientcorehandle_open_stream(this.__wbg_ptr, ptr0, len0);
+        return BigInt.asUintN(64, ret);
+    }
+    /**
+     * 构造响应帧（服务端主动调用的异步回复）
+     * @param {bigint} id
+     * @param {Uint8Array} payload
+     * @returns {Uint8Array}
+     */
+    build_response(id, payload) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_response(retptr, this.__wbg_ptr, id, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * 处理入站帧：返回需要写回对端的响应帧（对端主动调用且同步完成时）
+     * @param {Uint8Array} frame
+     * @returns {Uint8Array | undefined}
+     */
+    handle_inbound(frame) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(frame, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_handle_inbound(retptr, this.__wbg_ptr, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            let v2;
+            if (r0 !== 0) {
+                v2 = getArrayU8FromWasm0(r0, r1).slice();
+                wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            }
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
+     * @param {bigint} id
+     * @param {string} name
+     * @param {Uint8Array} payload
+     * @param {bigint} sender_ts
+     * @returns {Uint8Array}
+     */
+    build_stream_frame(id, name, payload, sender_ts) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_stream_frame(retptr, this.__wbg_ptr, id, ptr0, len0, ptr1, len1, sender_ts);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v3;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * 创建状态机
+     */
+    constructor() {
+        const ret = wasm.clientcorehandle_new();
+        this.__wbg_ptr = ret >>> 0;
+        ClientCoreHandleFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * 注册 RPC 处理器（处理对端主动调用；回调返回响应字节或 null 表示异步处理）
+     * @param {string} name
+     * @param {Function} callback
+     */
+    on_rpc(name, callback) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.clientcorehandle_on_rpc(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+    }
+    /**
+     * 发起 RPC：返回请求帧（长度前缀 + Message），响应到达时调用 `resolve(data: Uint8Array)`
+     * @param {string} name
+     * @param {Uint8Array} payload
+     * @param {Function} resolve
+     * @returns {Uint8Array}
+     */
+    request(name, payload, resolve) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_request(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1, addHeapObject(resolve));
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v3;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * 注册事件监听（回调：`(name: string, data: Uint8Array) => void`）
+     * @param {string} name
+     * @param {Function} callback
+     */
+    on_event(name, callback) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.clientcorehandle_on_event(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+    }
+}
+if (Symbol.dispose) ClientCoreHandle.prototype[Symbol.dispose] = ClientCoreHandle.prototype.free;
+exports.ClientCoreHandle = ClientCoreHandle;
+
 /**
  * 解码 bytes（长度前缀 + 字节）
  * @param {Uint8Array} bytes
@@ -445,6 +651,16 @@ exports.__wbg___wbindgen_string_get_a2a31e16edf96e42 = function(arg0, arg1) {
 exports.__wbg___wbindgen_throw_dd24417ed36fc46e = function(arg0, arg1) {
     throw new Error(getStringFromWasm0(arg0, arg1));
 };
+
+exports.__wbg_call_3020136f7a2d6e44 = function() { return handleError(function (arg0, arg1, arg2) {
+    const ret = getObject(arg0).call(getObject(arg1), getObject(arg2));
+    return addHeapObject(ret);
+}, arguments) };
+
+exports.__wbg_call_c8baa5c5e72d274e = function() { return handleError(function (arg0, arg1, arg2, arg3) {
+    const ret = getObject(arg0).call(getObject(arg1), getObject(arg2), getObject(arg3));
+    return addHeapObject(ret);
+}, arguments) };
 
 exports.__wbg_get_6b7bd52aca3f9671 = function(arg0, arg1) {
     const ret = getObject(arg0)[arg1 >>> 0];

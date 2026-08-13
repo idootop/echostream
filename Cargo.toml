@@ -6,12 +6,16 @@ members = [
     "crates/echostream-transport",
     "crates/echostream-derive",
     "crates/echostream-discovery",
+    "crates/echostream-client-core",
     "crates/echostream-web",
     "bindings/node",
     "bindings/wasm",
     "bindings/python",
 ]
 resolver = "2"
+
+# 默认构建仅 crates（bindings 使用各自工具链：napi-rs / maturin / wasm-bindgen）
+default-members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -27,6 +31,7 @@ categories = ["network-programming", "asynchronous"]
 [workspace.dependencies]
 # Internal crates
 echostream = { path = "crates/echostream", version = "0.1.0" }
+echostream-client-core = { path = "crates/echostream-client-core", version = "0.1.0" }
 echostream-core = { path = "crates/echostream-core", version = "0.1.0" }
 echostream-proto = { path = "crates/echostream-proto", version = "0.1.0" }
 echostream-transport = { path = "crates/echostream-transport", version = "0.1.0" }
