@@ -27,6 +27,18 @@ async function main() {
     const bytes = payload instanceof Uint8Array ? payload : Uint8Array.from(payload);
     console.log(`[node-server] 收到事件: ${decodeString(bytes)}`);
   });
+
+  // 流接收：JS 侧拉帧
+  const streamFrames = [];
+  builder.addStream("chat", async (err, receiver) => {
+    if (err) throw err;
+    while (true) {
+      const frame = await receiver.recv();
+      if (frame === null) break;
+      streamFrames.push(decodeString(Uint8Array.from(frame)));
+    }
+    console.log(`[node-server] 流 chat 结束，共 ${streamFrames.length} 帧`);
+  });
   const server = await builder.build();
   console.log(`[node-server] 监听 ${server.addr()}`);
   const runPromise = server.run(); // 后台运行
@@ -44,14 +56,22 @@ async function main() {
 
   await client.emit("hello", Array.from(encode("from node client")));
 
+  // 推送流数据（服务端流接收验证）
+  const stream = await client.createStream("chat");
+  for (let i = 0; i < 3; i++) {
+    await stream.send(Array.from(encode(`node stream ${i}`)));
+  }
+  await stream.finish();
+
   // 服务端广播
   await server.broadcast("hello", Array.from(encode("broadcast!")));
 
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 300));
   client.close();
   server.shutdown();
   await runPromise;
-  console.log("🎉 Node.js server + client 端到端测试通过");
+  if (streamFrames.length !== 3) throw new Error(`期望 3 帧，实际 ${streamFrames.length}`);
+  console.log("🎉 Node.js server + client 端到端测试通过（含流接收）");
   process.exit(0); // napi runtime 线程会阻止自然退出
 }
 

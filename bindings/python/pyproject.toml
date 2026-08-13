@@ -5,9 +5,16 @@ build-backend = "maturin"
 [project]
 name = "echostream"
 version = "0.1.0"
-description = "EchoStream Python binding — 基于 QUIC 的双向 RPC 与流传输"
+description = "EchoStream Python binding — 基于 QUIC 的双向 RPC / Event / Stream 实时通信框架"
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+keywords = ["rpc", "quic", "streaming", "realtime"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

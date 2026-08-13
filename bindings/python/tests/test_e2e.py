@@ -53,6 +53,18 @@ def main():
     builder.add_rpc("add", handle_add)
     builder.add_event("hello", handle_hello)
 
+    # 流接收：Python 侧拉帧
+    stream_frames = []
+
+    def handle_chat(receiver):
+        while True:
+            frame = receiver.recv()
+            if frame is None:
+                break
+            stream_frames.append(frame.decode("utf-8"))
+
+    builder.add_stream("chat", handle_chat)
+
     server = builder.build()
     print(f"[py-server] 监听 {server.addr()}")
 
@@ -102,15 +114,16 @@ def main():
     for i in range(3):
         stream.send(f"py frame {i}".encode("utf-8"))
     stream.finish()
-    time.sleep(0.2)
+    time.sleep(0.3)
 
     client.close()
     server.shutdown()
     time.sleep(0.2)
 
     assert "from python" in received, f"服务端未收到事件: {received}"
+    assert stream_frames == ["py frame 0", "py frame 1", "py frame 2"], f"流帧不符: {stream_frames}"
     assert not errors, f"服务端异常: {errors}"
-    print("🎉 Python binding 端到端测试通过")
+    print("🎉 Python binding 端到端测试通过（含流接收）")
 
 
 if __name__ == "__main__":

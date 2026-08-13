@@ -91,15 +91,33 @@ let addrs = discover("echo-server", Duration::from_secs(3)).await?;
 let client = ClientBuilder::new().connect(addrs[0]).await?;
 ```
 
+## 多端支持
+
+四端共享同一份 Rust 核心（协议编解码、客户端状态机、RPC/事件/流调度）：
+
+| 端 | 形态 | 能力 |
+|----|------|------|
+| **Rust** | crates.io（`echostream`） | 完整 client + server |
+| **Node.js** | npm（`echostream-node`，napi-rs） | 完整 client + server，error-first 回调 + Promise |
+| **Python** | PyPI（`echostream`，PyO3） | 完整 client + server，同步 API |
+| **Web** | `sdk/web`（WebTransport） | 浏览器 client：JS 仅网络层，编解码 + 状态机由 Rust WASM 提供 |
+
+浏览器受平台限制（WebTransport 为纯客户端协议）只提供 client；服务端能力由
+Rust / Node / Python 提供。协议编解码与客户端状态机（`echostream-client-core`）
+为单一事实来源，各端无需重复实现。
+
 ## 架构
 
 ```
-echostream        统一入口（重导出 + prelude + 宏）
-├── echostream-core        框架核心：Server/Client/Session/Router/Handler/中间件/插件
-├── echostream-transport   传输层：QUIC 封装（流、数据报、证书、帧编解码）
-├── echostream-proto       协议层：Message/Error（零运行时依赖）
-├── echostream-derive      过程宏：#[rpc] / #[event] / #[stream]
-└── echostream-discovery   服务发现：mDNS（独立可选）
+echostream             统一入口（重导出 + prelude + 宏）
+├── echostream-core         框架核心：Server/Client/Session/Router/Handler/中间件/插件
+├── echostream-client-core  无 I/O 客户端状态机（RPC 匹配/事件路由/流管理，可编译 WASM）
+├── echostream-transport    传输层：QUIC 封装（流、数据报、证书、帧编解码）
+├── echostream-proto        协议层：Message/Error（零运行时依赖）
+├── echostream-derive       过程宏：#[rpc] / #[event] / #[stream]
+├── echostream-discovery    服务发现：mDNS（独立可选）
+├── echostream-web          WebTransport 服务端（浏览器直连）
+└── bindings/               Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）
 ```
 
 通信模型：**每条消息使用独立 QUIC 流**，RPC 走双向流、事件/流走单向流，天然多路复用、背压隔离。

@@ -171,6 +171,71 @@ impl DynEventHandler for PyEventHandler {
 
 // ======================== 服务端 ========================
 
+/// Python 侧流处理器（回调：receiver 句柄 → Python 侧 recv() 拉帧）
+struct PyStreamHandler {
+    name: String,
+    callback: Py<PyAny>,
+}
+
+impl PyStreamHandler {
+    fn new(name: &str, callback: Py<PyAny>) -> Self {
+        Self {
+            name: name.to_string(),
+            callback,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl StreamHandler for PyStreamHandler {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn handle(&self, _session: &::echostream::Session, stream: StreamReceiver) -> Result<()> {
+        Python::attach(|py| {
+            let receiver = PyStreamReceiver {
+                inner: tokio::sync::Mutex::new(Some(stream)),
+            };
+            self.callback
+                .call1(py, (receiver,))
+                .map_err(|e| Error::Io(e.to_string()))?;
+            Ok(())
+        })
+    }
+}
+
+/// 流接收器（Python 侧句柄：同步拉帧）
+#[pyclass]
+pub struct PyStreamReceiver {
+    inner: tokio::sync::Mutex<Option<StreamReceiver>>,
+}
+
+#[pymethods]
+impl PyStreamReceiver {
+    /// 读取下一帧载荷；流结束返回 None
+    ///
+    /// 可能被 tokio worker 线程调用（Python 回调内拉帧），
+    /// 使用 `block_in_place` + `Handle::block_on` 兼容两种上下文。
+    fn recv(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let handle = runtime().handle().clone();
+        let result = py.detach(|| {
+            tokio::task::block_in_place(|| {
+                let mut guard = handle.block_on(self.inner.lock());
+                match guard.as_mut() {
+                    Some(recv) => handle.block_on(recv.recv()),
+                    None => Ok(None),
+                }
+            })
+        });
+        let frame = result.map_err(to_py_err)?;
+        match frame {
+            Some(f) => Ok(Some(PyBytes::new(py, &f.data).into())),
+            None => Ok(None),
+        }
+    }
+}
+
 /// 服务端（Python 侧句柄）
 #[pyclass]
 pub struct Server {
@@ -293,6 +358,11 @@ impl ServerBuilder {
         self.router.add_event(PyEventHandler::new(name, callback));
     }
 
+    /// 注册流处理器（回调签名：`handler(receiver)`，Python 侧 `receiver.recv()` 拉帧）
+    fn add_stream(&self, name: &str, callback: Py<PyAny>) {
+        self.router.add_stream(PyStreamHandler::new(name, callback));
+    }
+
     /// 构建服务端
     fn build(&self) -> PyResult<Server> {
         let addr = self
@@ -366,5 +436,6 @@ fn echostream_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Server>()?;
     m.add_class::<Session>()?;
     m.add_class::<ServerBuilder>()?;
+    m.add_class::<PyStreamReceiver>()?;
     Ok(())
 }

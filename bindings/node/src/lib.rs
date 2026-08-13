@@ -184,6 +184,53 @@ impl DynEventHandler for JsEventHandler {
     }
 }
 
+/// Node 侧流处理器（JS 回调：receiver 句柄 → JS 侧 recv() 拉帧）
+struct JsStreamHandler {
+    name: String,
+    callback: ThreadsafeFunction<JsStreamReceiver>,
+}
+
+#[async_trait::async_trait]
+impl StreamHandler for JsStreamHandler {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn handle(&self, _session: &Session, stream: StreamReceiver) -> echostream::Result<()> {
+        let receiver = JsStreamReceiver {
+            inner: tokio::sync::Mutex::new(Some(stream)),
+        };
+        self.callback
+            .call_async::<()>(Ok(receiver))
+            .await
+            .map_err(|e| echostream::Error::Io(e.to_string()))?;
+        Ok(())
+    }
+}
+
+/// 流接收器（Node 侧句柄：JS 异步拉帧）
+#[napi]
+pub struct JsStreamReceiver {
+    inner: tokio::sync::Mutex<Option<StreamReceiver>>,
+}
+
+#[napi]
+impl JsStreamReceiver {
+    /// 读取下一帧载荷；流结束返回 null
+    #[napi]
+    pub async fn recv(&self) -> napi::Result<Option<Vec<u8>>> {
+        let mut guard = self.inner.lock().await;
+        if let Some(recv) = guard.as_mut() {
+            match recv.recv().await.map_err(to_napi_err)? {
+                Some(frame) => Ok(Some(frame.data.to_vec())),
+                None => Ok(None),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 /// 服务端（Node 侧句柄）
 #[napi]
 pub struct JsServer {
@@ -326,6 +373,12 @@ impl JsServerBuilder {
     #[napi]
     pub fn add_event(&self, name: String, callback: ThreadsafeFunction<Vec<u8>>) {
         self.router.add_event(JsEventHandler { name, callback });
+    }
+
+    /// 注册流处理器（回调：receiver 句柄，JS 侧 `await receiver.recv()` 拉帧）
+    #[napi]
+    pub fn add_stream(&self, name: String, callback: ThreadsafeFunction<JsStreamReceiver>) {
+        self.router.add_stream(JsStreamHandler { name, callback });
     }
 
     /// 构建服务端
