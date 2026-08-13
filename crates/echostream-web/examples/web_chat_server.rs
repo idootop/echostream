@@ -24,7 +24,10 @@ async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
     let mut count = 0u64;
     while let Some(frame) = stream.recv().await? {
         count += 1;
-        println!("[server] 流帧 #{count}: {}", String::from_utf8_lossy(&frame.data));
+        println!(
+            "[server] 流帧 #{count}: {}",
+            String::from_utf8_lossy(&frame.data)
+        );
     }
     println!("[server] 流 chat 结束（{count} 帧）");
     Ok(())
@@ -37,10 +40,12 @@ async fn main() -> Result<()> {
         .with_target(false)
         .init();
     // 证书：优先用环境变量指定（E2E 的 CA 签发证书），否则自签名（7 天有效期）
-    let cert_file = std::env::var("ECHO_CERT").unwrap_or_else(|_| "target/web_chat_cert.pem".into());
+    let cert_file =
+        std::env::var("ECHO_CERT").unwrap_or_else(|_| "target/web_chat_cert.pem".into());
     let key_file = std::env::var("ECHO_KEY").unwrap_or_else(|_| "target/web_chat_key.pem".into());
     if std::env::var("ECHO_CERT").is_err() && !std::path::Path::new(&cert_file).exists() {
-        let mut params = rcgen::CertificateParams::new(vec!["localhost".into(), "127.0.0.1".into()]).unwrap();
+        let mut params =
+            rcgen::CertificateParams::new(vec!["localhost".into(), "127.0.0.1".into()]).unwrap();
         params.not_before = time::OffsetDateTime::now_utc() - time::Duration::days(1);
         params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(7);
         // Chrome WebTransport 要求 serverAuth EKU
@@ -52,9 +57,15 @@ async fn main() -> Result<()> {
         std::fs::write(&key_file, key_pair.serialize_pem()).unwrap();
         println!("[server] 已生成 7 天有效期证书");
     }
-    let identity = wtransport::Identity::load_pemfiles(&cert_file, &key_file).await.unwrap();
+    let identity = wtransport::Identity::load_pemfiles(&cert_file, &key_file)
+        .await
+        .unwrap();
     let hash = identity.certificate_chain().as_slice()[0].hash();
-    let hash_hex = hash.as_ref().iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let hash_hex = hash
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     println!("[cert-hash] {hash_hex}");
 
     let server = WebServerBuilder::new()

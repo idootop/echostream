@@ -10,7 +10,7 @@ env:
 
 jobs:
   check:
-    name: Check & Clippy
+    name: Rust Check & Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,3 +24,45 @@ jobs:
         run: cargo clippy --all-features -- -D warnings
       - name: Build
         run: cargo build
+      - name: 示例冒烟（RPC/Event/Stream 端到端）
+        run: cargo run -p echostream --example simple_rpc
+
+  wasm:
+    name: WASM 编解码与状态机验证
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 构建 WASM（release）
+        run: cargo build -p echostream-wasm --target wasm32-unknown-unknown --release
+      - name: 生成胶水代码
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.106 --locked
+          wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+      - name: 编解码交叉验证
+        run: node sdk/web/echostream.test.mjs
+      - name: 客户端状态机验证
+        run: node sdk/web/client_core.test.mjs
+
+  bindings:
+    name: Node.js binding 端到端
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 构建 Node binding
+        run: |
+          cargo build -p echostream-node --release
+          cp target/release/libechostream_node.so bindings/node/echostream-node.node
+      - name: 端到端测试（server + client 闭环）
+        run: node bindings/node/test/server.test.cjs

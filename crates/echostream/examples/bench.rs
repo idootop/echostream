@@ -101,7 +101,10 @@ async fn main() -> Result<()> {
     let eps = EVENTS as f64 / elapsed.as_secs_f64();
     println!("[bench] 事件吞吐: {eps:.0} evt/s（{EVENTS} 事件，64B）");
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    println!("[bench] 服务端收到事件: {}", EVENT_COUNT.load(Ordering::Relaxed));
+    println!(
+        "[bench] 服务端收到事件: {}",
+        EVENT_COUNT.load(Ordering::Relaxed)
+    );
 
     // ===== 4. 流吞吐（1MB × 200 帧 = 200MB） =====
     let mut stream = client.create_stream("bench_stream").await?;
