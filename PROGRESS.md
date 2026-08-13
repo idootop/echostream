@@ -47,7 +47,9 @@
 - [ ] 重连与断线自动重连
 - [ ] 客户端钩子（on_connect/on_disconnect）
 - [ ] 示例补齐：广播、认证中间件
-- [ ] 发布 v0.1（crates.io）
+- [x] 发布准备：多端 README 与 npm/PyPI 元数据完善；crates 打包检查验证发布顺序
+- [ ] 正式发布 v0.1（按序：proto → client-core → transport → core → derive → discovery → web → echostream）
+- [ ] 基准测试与性能调优
 
 ### ✅ P3 多端支持（核心部分完成）
 
@@ -59,6 +61,8 @@
       RPC id 匹配、事件路由、服务端主动调用、流序号管理），编译进 WASM，
       JS SDK 只剩网络层（读帧喂状态机、写帧出状态机），与 Rust 原生客户端共享同一份逻辑
 - [x] 状态机交叉验证：RPC 响应匹配（错误 id 忽略）、事件路由、主动调用、流序号全过
+- [x] Node/Python server 流接收处理器（addStream/add_stream），Python 回调内拉帧
+     用 block_in_place + Handle::block_on 兼容 tokio worker 上下文
 
 ## 设计决策记录
 
