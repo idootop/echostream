@@ -33,7 +33,7 @@ async function main() {
   await sleep(3000);
 
   // 3. 本地静态服务提供测试页面
-  const http = spawn("python3", ["-m", "http.server", "8080", "--directory", `${root}/sdk/web`], { stdio: "ignore" });
+  const http = spawn("python3", ["-m", "http.server", "8080", "--directory", `${root}/bindings/web`], { stdio: "ignore" });
   await sleep(1000);
 
   const profileDir = "/tmp/echostream-firefox-profile";

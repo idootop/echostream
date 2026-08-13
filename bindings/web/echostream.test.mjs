@@ -1,7 +1,7 @@
 // EchoStream WASM 编解码交叉验证
 // 基准字节来自 Rust 侧（crates/echostream/examples/codec_probe.rs）
 import assert from "node:assert/strict";
-import wasm from "../../bindings/wasm/node/echostream_wasm.js";
+import wasm from "../wasm/node/echostream_wasm.js";
 
 const { encode_payload, encode_message, decode_message, encode_frame, decode_u64, decode_string } = wasm;
 

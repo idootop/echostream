@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const wasm = require("../../bindings/wasm/node/echostream_wasm.js");
+const wasm = require("../wasm/node/echostream_wasm.js");
 const { ClientCoreHandle, encode_payload, encode_frame, decode_message, decode_u64, decode_string } = wasm;
 
 const core = new ClientCoreHandle();

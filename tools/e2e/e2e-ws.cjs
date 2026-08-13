@@ -9,7 +9,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   server.stdout.on('data', (d) => process.stdout.write('[server] ' + d));
   await sleep(3000);
   // 静态页面服务
-  const http = spawn('python3', ['-m', 'http.server', '8080', '--directory', `${root}/sdk/web`], { stdio: 'ignore' });
+  const http = spawn('python3', ['-m', 'http.server', '8080', '--directory', `${root}/bindings/web`], { stdio: 'ignore' });
   await sleep(1000);
   try {
     const browser = await chromium.launch({ headless: true });

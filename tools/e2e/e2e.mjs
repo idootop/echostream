@@ -42,7 +42,7 @@ async function main() {
   }
 
   // 本地静态服务提供测试页面
-  http = spawn("python3", ["-m", "http.server", "8080", "--directory", `${root}/sdk/web`], { stdio: "ignore" });
+  http = spawn("python3", ["-m", "http.server", "8080", "--directory", `${root}/bindings/web`], { stdio: "ignore" });
   await sleep(1000);
 
   try {
