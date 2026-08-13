@@ -6,13 +6,13 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+pub use echostream_proto::endpoint::{
+    Endpoint, FrameIo, FrameRead, FrameWrite, Listener, encode_message, read_message_frame,
+};
 use echostream_proto::{Error, Message, Result};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 
 use crate::cert;
-
-/// 单帧最大字节数（防止恶意长度导致内存膨胀）
-const MAX_FRAME_SIZE: usize = 64 * 1024 * 1024;
 
 // ======================== 错误转换 ========================
 
@@ -89,88 +89,6 @@ impl ToEcho for quinn::SendDatagramError {
             }
         }
     }
-}
-
-// ======================== 传输抽象 ========================
-
-/// 帧级流读写抽象（适配 QUIC / WebTransport 等不同传输的流）
-///
-/// 只读流（单向接收）调用 `write_message`/`finish` 返回错误，
-/// 只写流（单向发送）调用 `read_message` 返回错误。
-#[async_trait]
-pub trait FrameIo: Send {
-    /// 写入一帧
-    async fn write_message(&mut self, msg: &Message) -> Result<()>;
-    /// 读取一帧；流正常结束返回 `Ok(None)`
-    async fn read_message(&mut self) -> Result<Option<Message>>;
-    /// 关闭发送端
-    async fn finish(&mut self) -> Result<()>;
-}
-
-/// 连接抽象（适配 QUIC / WebTransport / WebSocket 等不同传输的连接）
-#[async_trait]
-pub trait Endpoint: Send + Sync + 'static {
-    /// 类型擦除访问（供传输实现内部使用）
-    fn as_any(&self) -> &dyn std::any::Any;
-
-    /// 打开双向流
-    async fn open_bi(&self) -> Result<Box<dyn FrameIo>>;
-    /// 打开单向发送流
-    async fn open_uni(&self) -> Result<Box<dyn FrameIo>>;
-    /// 接受双向流
-    async fn accept_bi(&self) -> Result<Box<dyn FrameIo>>;
-    /// 接受单向流
-    async fn accept_uni(&self) -> Result<Box<dyn FrameIo>>;
-    /// 对端地址
-    fn peer_addr(&self) -> SocketAddr;
-    /// 关闭连接
-    fn close(&self);
-}
-
-// ======================== 帧编解码 ========================
-
-/// 流读取抽象（适配 QUIC / WebTransport 的接收流）
-#[async_trait]
-pub trait FrameRead: Send {
-    /// 读取数据；流结束返回 `Ok(None)`
-    async fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>>;
-    /// 读取完整数据
-    async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()>;
-}
-
-/// 流写入抽象（适配 QUIC / WebTransport 的发送流）
-#[async_trait]
-pub trait FrameWrite: Send {
-    /// 写入完整数据
-    async fn write_all(&mut self, buf: &[u8]) -> Result<()>;
-    /// 关闭发送端
-    fn finish(&mut self) -> Result<()>;
-}
-
-/// 编码消息帧：4 字节小端长度前缀 + postcard 载荷
-pub fn encode_message(msg: &Message) -> Result<Bytes> {
-    let payload = postcard::to_allocvec(msg).map_err(|e| Error::Serialization(e.to_string()))?;
-    let mut buf = Vec::with_capacity(4 + payload.len());
-    buf.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-    buf.extend_from_slice(&payload);
-    Ok(Bytes::from(buf))
-}
-
-/// 从接收流读取一帧；流正常结束（对端 finish）时返回 `Ok(None)`
-pub async fn read_message_frame<R: FrameRead + ?Sized>(recv: &mut R) -> Result<Option<Message>> {
-    let mut len_buf = [0u8; 4];
-    match recv.read(&mut len_buf).await? {
-        Some(_) => {}
-        None => return Ok(None), // 对端正常关闭流
-    }
-    let len = u32::from_le_bytes(len_buf) as usize;
-    if len > MAX_FRAME_SIZE {
-        return Err(Error::Protocol(format!("帧大小超限: {len}")));
-    }
-    let mut buf = vec![0u8; len];
-    recv.read_exact(&mut buf).await?;
-    let msg = postcard::from_bytes(&buf).map_err(|e| Error::Serialization(e.to_string()))?;
-    Ok(Some(msg))
 }
 
 /// 构造传输配置（启用 datagram 通道 + 保活）
@@ -250,6 +168,29 @@ impl QuicEndpoint {
     }
 }
 
+#[async_trait]
+impl Listener for QuicEndpoint {
+    async fn accept(&self) -> Option<Arc<dyn Endpoint>> {
+        loop {
+            let incoming = self.endpoint.accept().await?;
+            match incoming.await {
+                Ok(conn) => return Some(Arc::new(QuicConn { conn })),
+                Err(e) => tracing::debug!("连接握手失败: {e}"),
+            }
+        }
+    }
+
+    fn local_addr(&self) -> Result<SocketAddr> {
+        self.endpoint
+            .local_addr()
+            .map_err(|e| Error::Io(e.to_string()))
+    }
+
+    fn close(&self) {
+        self.endpoint.close(0u32.into(), b"server closed");
+    }
+}
+
 // ======================== 连接 ========================
 
 /// QUIC 连接（Clone 共享）
@@ -283,23 +224,29 @@ impl Endpoint for QuicConn {
 
     async fn open_bi(&self) -> Result<Box<dyn FrameIo>> {
         let (send, recv) = to_echo(self.conn.open_bi().await)?;
-        Ok(Box::new(BiStream { send, recv }))
+        Ok(Box::new(BiStream {
+            send: QuicSend(send),
+            recv: QuicRecv(recv),
+        }))
     }
 
     async fn open_uni(&self) -> Result<Box<dyn FrameIo>> {
         Ok(Box::new(UniSend {
-            send: to_echo(self.conn.open_uni().await)?,
+            send: QuicSend(to_echo(self.conn.open_uni().await)?),
         }))
     }
 
     async fn accept_bi(&self) -> Result<Box<dyn FrameIo>> {
         let (send, recv) = to_echo(self.conn.accept_bi().await)?;
-        Ok(Box::new(BiStream { send, recv }))
+        Ok(Box::new(BiStream {
+            send: QuicSend(send),
+            recv: QuicRecv(recv),
+        }))
     }
 
     async fn accept_uni(&self) -> Result<Box<dyn FrameIo>> {
         Ok(Box::new(UniRecv {
-            recv: to_echo(self.conn.accept_uni().await)?,
+            recv: QuicRecv(to_echo(self.conn.accept_uni().await)?),
         }))
     }
 
@@ -312,25 +259,31 @@ impl Endpoint for QuicConn {
     }
 }
 
+/// QUIC 接收流包装（本地类型，实现 `FrameRead`）
+pub struct QuicRecv(pub(crate) quinn::RecvStream);
+
 #[async_trait]
-impl FrameRead for quinn::RecvStream {
+impl FrameRead for QuicRecv {
     async fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>> {
-        to_echo(self.read(buf).await)
+        to_echo(self.0.read(buf).await)
     }
 
     async fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        to_echo(self.read_exact(buf).await)
+        to_echo(self.0.read_exact(buf).await)
     }
 }
 
+/// QUIC 发送流包装（本地类型，实现 `FrameWrite`）
+pub struct QuicSend(pub(crate) quinn::SendStream);
+
 #[async_trait]
-impl FrameWrite for quinn::SendStream {
+impl FrameWrite for QuicSend {
     async fn write_all(&mut self, buf: &[u8]) -> Result<()> {
-        to_echo(self.write_all(buf).await)
+        to_echo(self.0.write_all(buf).await)
     }
 
     fn finish(&mut self) -> Result<()> {
-        self.finish().map_err(|_| Error::SessionClosed)
+        self.0.finish().map_err(|_| Error::SessionClosed)
     }
 }
 
@@ -338,8 +291,8 @@ impl FrameWrite for quinn::SendStream {
 
 /// 双向流：帧级读写
 pub struct BiStream {
-    send: quinn::SendStream,
-    recv: quinn::RecvStream,
+    send: QuicSend,
+    recv: QuicRecv,
 }
 
 impl BiStream {
@@ -349,11 +302,18 @@ impl BiStream {
     }
 }
 
+impl BiStream {
+    /// 原始接收端（底层访问）
+    pub fn raw_recv(&self) -> &QuicRecv {
+        &self.recv
+    }
+}
+
 #[async_trait]
 impl FrameIo for BiStream {
     async fn write_message(&mut self, msg: &Message) -> Result<()> {
         let frame = encode_message(msg)?;
-        to_echo(self.send.write_all(&frame).await)?;
+        self.send.write_all(&frame).await?;
         Ok(())
     }
 
@@ -368,14 +328,14 @@ impl FrameIo for BiStream {
 
 /// 单向发送流
 pub struct UniSend {
-    send: quinn::SendStream,
+    send: QuicSend,
 }
 
 #[async_trait]
 impl FrameIo for UniSend {
     async fn write_message(&mut self, msg: &Message) -> Result<()> {
         let frame = encode_message(msg)?;
-        to_echo(self.send.write_all(&frame).await)?;
+        self.send.write_all(&frame).await?;
         Ok(())
     }
 
@@ -390,7 +350,7 @@ impl FrameIo for UniSend {
 
 /// 单向接收流
 pub struct UniRecv {
-    recv: quinn::RecvStream,
+    recv: QuicRecv,
 }
 
 #[async_trait]

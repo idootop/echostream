@@ -1,8 +1,8 @@
 //! 流发送器与接收器：流式数据的帧级收发
 
 use bytes::Bytes;
+use echostream_proto::endpoint::FrameIo;
 use echostream_proto::{Message, Result, StreamMsg, Timestamp};
-use echostream_transport::FrameIo;
 
 /// 流发送器：发送流数据帧（自动递增序号 + 时间戳）
 pub struct StreamSender {

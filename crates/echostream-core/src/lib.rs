@@ -23,6 +23,9 @@ pub mod stream;
 
 pub use client::{Client, ClientBuilder};
 pub use context::ServerContext;
+pub use echostream_proto::endpoint::{
+    Endpoint, FrameIo, FrameRead, FrameWrite, Listener, encode_message, read_message_frame,
+};
 pub use handler::{DynEventHandler, DynRpcHandler, EventHandler, RpcHandler, StreamHandler};
 pub use middleware::Middleware;
 pub use plugin::ServerPlugin;

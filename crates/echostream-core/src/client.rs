@@ -4,7 +4,7 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use echostream_proto::Message;
-use echostream_transport::{Endpoint, QuicConn, connect};
+use echostream_proto::endpoint::Endpoint;
 
 use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
@@ -134,7 +134,20 @@ impl ClientBuilder {
         self
     }
 
-    /// 连接到服务端并启动后台接收循环
+    /// 使用传输层连接（QUIC / WebTransport 等）
+    pub fn from_endpoint(self, conn: Arc<dyn Endpoint>) -> Client {
+        let ctx = Arc::new(ServerContext::new());
+        let session = Session::with_timeout(ctx.next_session_id(), conn, ctx.clone(), self.timeout);
+        let client = Client {
+            session,
+            router: self.router,
+        };
+        tokio::spawn(receive_loop(client.clone()));
+        client
+    }
+
+    /// 使用 QUIC 连接到服务端（feature = "quic"）
+    #[cfg(feature = "quic")]
     pub async fn connect(self, addr: impl ToSocketAddrs) -> echostream_proto::Result<Client> {
         let addr = addr
             .to_socket_addrs()
@@ -143,20 +156,8 @@ impl ClientBuilder {
             .ok_or_else(|| {
                 echostream_proto::Error::InvalidParameter("无法解析服务端地址".into())
             })?;
-        let conn: QuicConn = connect(addr).await?;
-        let ctx = Arc::new(ServerContext::new());
-        let session = Session::with_timeout(
-            ctx.next_session_id(),
-            Arc::new(conn) as Arc<dyn Endpoint>,
-            ctx.clone(),
-            self.timeout,
-        );
-        let client = Client {
-            session,
-            router: self.router,
-        };
-        tokio::spawn(receive_loop(client.clone()));
-        Ok(client)
+        let conn = echostream_transport::connect(addr).await?;
+        Ok(self.from_endpoint(Arc::new(conn)))
     }
 }
 

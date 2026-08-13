@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use echostream_proto::Message;
-use echostream_transport::{Endpoint, QuicEndpoint};
+
+use echostream_proto::endpoint::Listener;
 
 use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
@@ -17,7 +18,7 @@ type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;
 
 /// 服务端
 pub struct Server {
-    endpoint: QuicEndpoint,
+    listener: Arc<dyn Listener>,
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
     on_start: Vec<Hook<ServerContext>>,
@@ -30,7 +31,7 @@ pub struct Server {
 impl Server {
     /// 本地监听地址
     pub fn endpoint_addr(&self) -> Option<std::net::SocketAddr> {
-        self.endpoint.local_addr().ok()
+        self.listener.local_addr().ok()
     }
 
     /// 运行服务（阻塞直到 `shutdown` 被调用）
@@ -41,10 +42,10 @@ impl Server {
 
         loop {
             tokio::select! {
-                conn = self.endpoint.accept() => {
+                conn = self.listener.accept() => {
                     match conn {
                         Some(conn) => {
-                            let session = Session::new(self.ctx.next_session_id(), Arc::new(conn) as Arc<dyn Endpoint>, self.ctx.clone());
+                            let session = Session::new(self.ctx.next_session_id(), conn, self.ctx.clone());
                             self.ctx.register_session(session.clone());
                             tracing::debug!(
                                 "客户端连接: {} (session {})",
@@ -81,7 +82,7 @@ impl Server {
     /// 优雅关闭：停止接受新连接并触发 on_stop
     pub fn shutdown(&self) {
         self.shutdown_signal.notify_waiters();
-        self.endpoint.close();
+        self.listener.close();
     }
 }
 
@@ -137,7 +138,9 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
 pub struct ServerBuilder {
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
-    addr: Option<String>,
+    listener: Option<Arc<dyn Listener>>,
+    #[cfg(feature = "quic")]
+    quic_addr: Option<String>,
     on_start: Vec<Hook<ServerContext>>,
     on_stop: Vec<Hook<ServerContext>>,
     on_connect: Vec<Hook<Session>>,
@@ -156,7 +159,9 @@ impl ServerBuilder {
         Self {
             router: Arc::new(Router::default()),
             ctx: Arc::new(ServerContext::new()),
-            addr: None,
+            listener: None,
+            #[cfg(feature = "quic")]
+            quic_addr: None,
             on_start: Vec::new(),
             on_stop: Vec::new(),
             on_connect: Vec::new(),
@@ -164,10 +169,23 @@ impl ServerBuilder {
         }
     }
 
-    /// 绑定监听地址
-    pub fn bind(mut self, addr: impl Into<String>) -> Self {
-        self.addr = Some(addr.into());
+    /// 使用传输层监听器（QUIC / WebSocket / WebTransport 等）
+    pub fn listener(mut self, listener: Arc<dyn Listener>) -> Self {
+        self.listener = Some(listener);
         self
+    }
+
+    /// 使用 QUIC 监听器（feature = "quic"）
+    #[cfg(feature = "quic")]
+    pub fn bind_quic(mut self, addr: impl Into<String>) -> Self {
+        self.quic_addr = Some(addr.into());
+        self
+    }
+
+    /// 使用 QUIC 监听器（便捷别名，feature = "quic"）
+    #[cfg(feature = "quic")]
+    pub fn bind(self, addr: impl Into<String>) -> Self {
+        self.bind_quic(addr)
     }
 
     /// 使用现有的处理器注册表（供各语言绑定层注入处理器）
@@ -254,12 +272,22 @@ impl ServerBuilder {
 
     /// 构建服务端
     pub async fn build(self) -> echostream_proto::Result<Server> {
-        let addr = self
-            .addr
-            .ok_or_else(|| echostream_proto::Error::InvalidParameter("未指定监听地址".into()))?;
-        let endpoint = QuicEndpoint::bind(addr).await?;
+        #[cfg(feature = "quic")]
+        let listener = match self.listener {
+            Some(l) => l,
+            None => {
+                let addr = self.quic_addr.ok_or_else(|| {
+                    echostream_proto::Error::InvalidParameter("未指定监听器或监听地址".into())
+                })?;
+                Arc::new(echostream_transport::QuicEndpoint::bind(addr).await?) as Arc<dyn Listener>
+            }
+        };
+        #[cfg(not(feature = "quic"))]
+        let listener = self
+            .listener
+            .ok_or_else(|| echostream_proto::Error::InvalidParameter("未指定监听器".into()))?;
         Ok(Server {
-            endpoint,
+            listener,
             router: self.router,
             ctx: self.ctx,
             on_start: self.on_start,

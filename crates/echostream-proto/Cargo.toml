@@ -15,3 +15,5 @@ description = "底层协议定义和基础类型"
 serde = { workspace = true }
 thiserror = { workspace = true }
 bytes = { workspace = true }
+postcard = { workspace = true }
+async-trait = { workspace = true }

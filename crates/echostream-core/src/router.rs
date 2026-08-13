@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
+use echostream_proto::endpoint::FrameIo;
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg};
-use echostream_transport::FrameIo;
 
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
 use crate::middleware::Middleware;

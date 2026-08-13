@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
+use echostream_proto::endpoint::Endpoint;
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
-use echostream_transport::Endpoint;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::codec;

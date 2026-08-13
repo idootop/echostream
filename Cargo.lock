@@ -359,7 +359,9 @@ dependencies = [
 name = "echostream-proto"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
+ "postcard",
  "serde",
  "thiserror",
 ]
