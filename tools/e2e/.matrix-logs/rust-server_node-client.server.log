@@ -1,7 +1,0 @@
-E2E_SERVER_READY 127.0.0.1:5110
-E2E_RPC add(5, 10)
-E2E_EVENT_RECEIVED: "hello from node client"
-E2E_STREAM_FRAME 0: node frame 0
-E2E_STREAM_FRAME 1: node frame 1
-E2E_STREAM_FRAME 2: node frame 2
-E2E_STREAM_FRAMES=3

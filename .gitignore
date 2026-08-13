@@ -7,3 +7,6 @@
 # Misc
 .DS_Store
 temp
+__pycache__/
+*.pyc
+tools/e2e/.matrix-logs/
