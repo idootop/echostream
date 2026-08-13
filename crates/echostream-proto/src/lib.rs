@@ -7,6 +7,4 @@ pub mod error;
 pub mod message;
 
 pub use error::{Error, Result};
-pub use message::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp,
-};
+pub use message::{EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp};

@@ -4,12 +4,18 @@
 //!
 //! 统一入口：重导出核心框架、协议类型与过程宏。
 
+pub use async_trait::async_trait;
 pub use echostream_core::*;
-pub use echostream_proto::{Error, EventMsg, Message, RequestMsg, ResponseMsg, Result, StatusCode, StreamMsg, Timestamp};
+pub use echostream_proto::{
+    Error, EventMsg, Message, RequestMsg, ResponseMsg, Result, StatusCode, StreamMsg, Timestamp,
+};
+
+/// 过程宏（feature = "derive"）
+#[cfg(feature = "derive")]
+pub use echostream_derive::{event, rpc, stream};
 
 /// 常用类型预导入
 pub mod prelude {
     pub use crate::*;
-    pub use async_trait::async_trait;
     pub use serde::{Deserialize, Serialize};
 }

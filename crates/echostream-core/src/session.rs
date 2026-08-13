@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
 use echostream_transport::QuicConn;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::codec;
 use crate::context::ServerContext;

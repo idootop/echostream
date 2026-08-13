@@ -4,7 +4,7 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use echostream_proto::Message;
-use echostream_transport::{connect, QuicConn};
+use echostream_transport::{QuicConn, connect};
 
 use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
@@ -35,7 +35,11 @@ impl Client {
     }
 
     /// 发送单向事件
-    pub async fn emit<T: serde::Serialize + Send>(&self, name: &str, data: &T) -> echostream_proto::Result<()> {
+    pub async fn emit<T: serde::Serialize + Send>(
+        &self,
+        name: &str,
+        data: &T,
+    ) -> echostream_proto::Result<()> {
         self.session.emit(name, data).await
     }
 
@@ -93,7 +97,9 @@ impl ClientBuilder {
             .to_socket_addrs()
             .map_err(|e| echostream_proto::Error::Io(e.to_string()))?
             .next()
-            .ok_or_else(|| echostream_proto::Error::InvalidParameter("无法解析服务端地址".into()))?;
+            .ok_or_else(|| {
+                echostream_proto::Error::InvalidParameter("无法解析服务端地址".into())
+            })?;
         let conn: QuicConn = connect(addr).await?;
         let ctx = Arc::new(ServerContext::new());
         let session = Session::new(ctx.next_session_id(), conn, ctx.clone());

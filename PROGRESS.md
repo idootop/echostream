@@ -28,12 +28,17 @@
 
 ### ⏳ P1 简化抽象落地（进行中）
 
-- [ ] derive 宏：`#[rpc]` / `#[event]` / `#[stream]`（强类型 Handler 自动生成，消除手动 trait 样板）
-- [ ] 生命周期钩子：`on_start` / `on_stop` / `on_connect` / `on_disconnect`
-- [ ] 中间件（洋葱链）：鉴权、日志、超时
-- [ ] 插件机制（builder 钩子）
-- [ ] 双向主动调用示例（服务端调用客户端）
-- [ ] 客户端事件监听
+- [x] derive 宏：`#[rpc]` / `#[event]` / `#[stream]`（强类型 Handler 自动生成，消除手动 trait 样板）
+  - 支持 Session 可选、数据参数可选、`Result<T>` 或直接返回值
+  - 宏生成 PascalCase 零大小结构体（`add` → `Add`），注册时 `add_rpc(Add)`
+- [x] 生命周期钩子：`on_start` / `on_stop` / `on_connect` / `on_disconnect`（服务端）
+- [x] 双向主动调用示例（`bidi`）：服务端通过 `session.request()` 主动调用客户端 RPC
+- [x] 客户端事件监听：`ClientBuilder::add_event` 接收服务端推送
+- [x] 中间件（数据面）：`Middleware` trait，洋葱链拦截/修改入站消息，`LogMiddleware` 示例
+- [x] 插件机制（控制面）：`ServerPlugin` trait，`install(Box<Self>, ServerBuilder)` 打包处理器与钩子
+- [ ] 客户端钩子（on_connect/on_disconnect）
+- [ ] 请求超时可配置
+- [ ] 服务端事件广播到单会话/全体的完整示例
 
 ### ⏳ P2 v0.1 功能
 

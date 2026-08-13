@@ -14,7 +14,12 @@ pub struct StreamSender {
 
 impl StreamSender {
     pub(crate) fn new(send: UniSend, id: u64, name: String) -> Self {
-        Self { send, id, name, seq: 0 }
+        Self {
+            send,
+            id,
+            name,
+            seq: 0,
+        }
     }
 
     /// 发送一帧数据

@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use echostream_proto::Result;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{codec, session::Session, stream::StreamReceiver};
 

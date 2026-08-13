@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use echostream_proto::{Error, Result};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 /// 序列化为载荷字节
 pub fn encode<T: Serialize>(value: &T) -> Result<Bytes> {

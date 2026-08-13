@@ -8,6 +8,7 @@ use echostream_proto::{Error, EventMsg, Message, RequestMsg, ResponseMsg, Status
 use echostream_transport::{BiStream, UniRecv};
 
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
+use crate::middleware::Middleware;
 use crate::session::Session;
 use crate::stream::StreamReceiver;
 
@@ -17,6 +18,7 @@ pub struct Router {
     rpc: RwLock<HashMap<String, Arc<dyn DynRpcHandler>>>,
     event: RwLock<HashMap<String, Vec<Arc<dyn DynEventHandler>>>>,
     stream: RwLock<HashMap<String, Arc<dyn StreamHandler>>>,
+    middlewares: RwLock<Vec<Arc<dyn Middleware>>>,
 }
 
 impl Router {
@@ -46,13 +48,44 @@ impl Router {
             .insert(handler.name().to_string(), Arc::new(handler));
     }
 
+    /// 添加中间件（按添加顺序执行）
+    pub fn add_middleware<M: Middleware>(&self, middleware: M) {
+        self.middlewares.write().unwrap().push(Arc::new(middleware));
+    }
+
     /// 移除 RPC 处理器
     pub fn remove_rpc(&self, name: &str) {
         self.rpc.write().unwrap().remove(name);
     }
 
+    /// 依次执行中间件链；任一中间件返回 None 则拦截
+    async fn run_middlewares(&self, session: &Session, msg: Message) -> Option<Message> {
+        let mut msg = msg;
+        let middlewares = self.middlewares.read().unwrap().clone();
+        for mw in middlewares {
+            match mw.on_message(session, msg).await {
+                Ok(Some(next)) => msg = next,
+                Ok(None) => return None,
+                Err(e) => {
+                    tracing::debug!("中间件 {} 出错: {e}", mw.name());
+                    return None;
+                }
+            }
+        }
+        Some(msg)
+    }
+
     /// 分派 RPC 请求（在同一双向流上写回响应）
     pub async fn dispatch_rpc(&self, session: &Session, stream: &mut BiStream, msg: RequestMsg) {
+        // 中间件链
+        let msg = match self
+            .run_middlewares(session, Message::Request(msg.clone()))
+            .await
+        {
+            Some(Message::Request(m)) => m,
+            _ => return, // 被拦截
+        };
+
         let handler = self.rpc.read().unwrap().get(&msg.name).cloned();
         let result = match handler {
             Some(handler) => handler.handle_encoded(session, msg.data.clone()).await,
@@ -83,6 +116,15 @@ impl Router {
 
     /// 分派事件（单向流）
     pub async fn dispatch_event(&self, session: &Session, msg: EventMsg) {
+        // 中间件链
+        let msg = match self
+            .run_middlewares(session, Message::Event(msg.clone()))
+            .await
+        {
+            Some(Message::Event(m)) => m,
+            _ => return, // 被拦截
+        };
+
         let handlers = self.event.read().unwrap().get(&msg.name).cloned();
         if let Some(handlers) = handlers {
             for handler in handlers {

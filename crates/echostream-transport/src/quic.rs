@@ -164,8 +164,8 @@ impl QuicEndpoint {
             .map_err(|e| Error::Io(e.to_string()))?;
         server_config.transport_config(transport_config());
 
-        let endpoint = quinn::Endpoint::server(server_config, addr)
-            .map_err(|e| Error::Io(e.to_string()))?;
+        let endpoint =
+            quinn::Endpoint::server(server_config, addr).map_err(|e| Error::Io(e.to_string()))?;
         tracing::debug!("QUIC 服务端已监听: {addr}");
         Ok(Self { endpoint })
     }
@@ -325,8 +325,11 @@ pub async fn connect(addr: SocketAddr) -> Result<QuicConn> {
     let mut client_config = quinn::ClientConfig::new(Arc::new(quic_config));
     client_config.transport_config(transport_config());
 
-    let mut endpoint =
-        quinn::Endpoint::client("[::]:0".parse::<SocketAddr>().map_err(|e| Error::Io(e.to_string()))?)?;
+    let mut endpoint = quinn::Endpoint::client(
+        "[::]:0"
+            .parse::<SocketAddr>()
+            .map_err(|e| Error::Io(e.to_string()))?,
+    )?;
     endpoint.set_default_client_config(client_config);
     let conn = endpoint
         .connect(addr, "localhost")

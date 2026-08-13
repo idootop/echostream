@@ -6,11 +6,12 @@ use echostream_proto::Error;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 
 /// 生成自签名证书（开发环境开箱即用）
-pub fn self_signed() -> echostream_proto::Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
+pub fn self_signed()
+-> echostream_proto::Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)> {
     let certified_key = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
         .map_err(|e| Error::Io(format!("生成自签名证书失败: {e}")))?;
     let cert = certified_key.cert.der().clone();
-    let key = PrivateKeyDer::Pkcs8(certified_key.key_pair.serialize_der().into());
+    let key = PrivateKeyDer::Pkcs8(certified_key.signing_key.serialize_der().into());
     Ok((vec![cert], key))
 }
 
