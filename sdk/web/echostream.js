@@ -27,8 +27,14 @@ function ensureWasm() {
 }
 
 export class EchoStream {
-  constructor(url) {
+  /**
+   * @param {string} url WebTransport URL（如 https://host:4433）
+   * @param {object} options WebTransport 选项透传（如 { serverCertificateHashes: [...] }，
+   *   用于信任自签名证书，hash 来自服务端启动时打印的 [cert-hash]）
+   */
+  constructor(url, options = {}) {
     this.url = url;
+    this.options = options;
     this.transport = null;
     this.core = null;
     this.streams = new Map(); // JS 侧流句柄（网络层状态：writer）
@@ -38,7 +44,7 @@ export class EchoStream {
   async connect() {
     await ensureWasm();
     this.core = new ClientCoreHandle();
-    this.transport = new WebTransport(this.url);
+    this.transport = new WebTransport(this.url, this.options);
     await this.transport.ready;
     this._receiveLoop();
   }

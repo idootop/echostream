@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>EchoStream E2E</title></head>
+<body>
+<script type="module">
+  import { EchoStream } from "./echostream.js";
+  window.__e2e = async () => {
+    const results = {};
+    // 直接验证 WebTransport + serverCertificateHashes（ArrayBuffer 形式）
+    try {
+      const raw = window.__certHash; // { hex } 由测试注入
+      const bytes = new Uint8Array(raw.hex.match(/.{2}/g).map((b) => parseInt(b, 16)));
+      const wt = new WebTransport("https://127.0.0.1:4433", {
+        serverCertificateHashes: [{ algorithm: "sha-256", value: bytes.buffer }],
+      });
+      await wt.ready;
+      results.directConnected = true;
+      wt.close();
+    } catch (e) {
+      results.directError = String(e);
+    }
+    try {
+      const hashes = [{ algorithm: "sha-256", value: (() => { const b = window.__certHash.hex.match(/.{2}/g).map((x) => parseInt(x, 16)); return new Uint8Array(b); })() }];
+      const client = new EchoStream("https://127.0.0.1:4433", { serverCertificateHashes: hashes });
+    await client.connect();
+    results.connected = true;
+
+    // RPC
+    results.sum = await client.request("add", [10, 20], { decode: "number" });
+
+    // 事件（服务端 on_hello 打印）
+    await client.emit("hello", "e2e from browser");
+
+    // 流
+    const stream = await client.createStream("chat");
+    await stream.send("e2e-frame-1");
+    await stream.send("e2e-frame-2");
+    await stream.finish();
+
+    await new Promise((r) => setTimeout(r, 200));
+    client.close();
+    results.done = true;
+    return results;
+    } catch (e) {
+      results.sdkError = String(e);
+      return results;
+    }
+  };
+</script>
+</body>
+</html>

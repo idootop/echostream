@@ -26,4 +26,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 echostream = { workspace = true }
 postcard = { workspace = true }
+rcgen = { workspace = true }
+time = "0.3"
+tracing-subscriber = { workspace = true }
 wtransport = { version = "0.7", features = ["dangerous-configuration"] }

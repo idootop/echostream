@@ -154,6 +154,7 @@ pub struct WebServerBuilder {
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
     addr: Option<String>,
+    identity: Option<Identity>,
     on_start: Vec<Hook<ServerContext>>,
     on_stop: Vec<Hook<ServerContext>>,
     on_connect: Vec<Hook<Session>>,
@@ -173,6 +174,7 @@ impl WebServerBuilder {
             router: Arc::new(Router::default()),
             ctx: Arc::new(ServerContext::new()),
             addr: None,
+            identity: None,
             on_start: Vec::new(),
             on_stop: Vec::new(),
             on_connect: Vec::new(),
@@ -183,6 +185,12 @@ impl WebServerBuilder {
     /// 绑定监听地址（HTTP/3 + WebTransport）
     pub fn bind(mut self, addr: impl Into<String>) -> Self {
         self.addr = Some(addr.into());
+        self
+    }
+
+    /// 使用指定身份（默认自动生成自签名证书）
+    pub fn identity(mut self, identity: Identity) -> Self {
+        self.identity = Some(identity);
         self
     }
 

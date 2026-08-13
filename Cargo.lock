@@ -416,9 +416,12 @@ dependencies = [
  "echostream-proto",
  "echostream-transport",
  "postcard",
+ "rcgen",
  "serde",
+ "time",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "wtransport",
 ]
 
