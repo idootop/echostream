@@ -1,29 +1,54 @@
-# EchoStream 模块职责
+# EchoStream 模块职责（v2 分层）
 
-> 当前实现的模块边界与依赖方向（一个源，README 与代码以本文件为准）。
+> 一个源：README、代码与发布以本文件为准。
 
-## 依赖方向
+## 分层与依赖方向
 
 ```
-proto（零依赖）← transport ← core ← derive / discovery（独立可选）← echostream（入口）
+协议层    echostream-proto         Message/Error/传输接口/帧编解码（零运行时依赖）
+                                    ↑
+框架层    echostream-core           Router/Handler/Session/Server/Client/中间件/插件/状态
+          echostream-client-core    无 I/O 客户端状态机（WASM/绑定复用）
+                                    ↑
+传输层    echostream-transport      QUIC（quinn，实现 proto 接口）
+          echostream-ws             WebSocket（局域网 Web 零证书）
+          echostream-web            WebTransport（公网浏览器）
+                                    ↑
+扩展层    echostream-derive         过程宏
+          echostream-discovery      mDNS 局域网发现（通用化）
+          echostream-middleware-*   中间件集合（数据面）
+          echostream-plugin-*       插件集合（控制面）
+                                    ↑
+入口      echostream                统一入口（重导出 + 便捷 QUIC bind/connect）
+                                    ↑
+绑定      bindings/node|python|wasm|web
 ```
+
+## 模块职责表
 
 | 模块 | 职责 | 依赖 |
 |------|------|------|
-| echostream-proto | 协议类型：`Message`（Request/Response/Event/Stream）、`Error`、`Timestamp`、`StatusCode` | serde、bytes、thiserror |
-| echostream-transport | QUIC 封装：端点/连接/双向流/单向流/数据报、自签证书、帧编解码（长度前缀 + postcard） | proto、quinn、rustls、rcgen、postcard |
-| echostream-core | 框架：Server/Client（Builder）、Session（双向主动通信）、Router（分发）、强类型 Handler、中间件、插件、生命周期钩子、ServerContext（状态/会话/广播） | proto、transport、tokio、serde、postcard、async-trait |
-| echostream-derive | 过程宏：`#[rpc]` / `#[event]` / `#[stream]`，生成零大小 Handler 结构体 | syn、quote、proc-macro2 |
-| echostream-discovery | mDNS 服务发现：`advertise` / `discover` / `discover_stream` | proto、mdns-sd、tokio |
-| echostream | 统一入口：重导出 + prelude + 宏（feature：derive、discovery） | core、proto |
+| echostream-proto | Message（Request/Response/Event/Stream/StreamEnd）、Error、**传输接口**（Endpoint/FrameIo/FrameRead/FrameWrite/Listener）、帧编解码（长度前缀+postcard） | serde/bytes/postcard/async-trait/thiserror |
+| echostream-core | Server/Client（Builder，传输无关：listener/from_endpoint）、Session（双向通信）、Router（分发）、强类型 Handler、中间件、插件、ServerContext、生命周期钩子 | proto、tokio（可选 quic feature 依赖 transport） |
+| echostream-client-core | 无 I/O 状态机：RPC 匹配/事件路由/流管理/流结束 | proto、bytes、futures |
+| echostream-transport | QUIC 实现：QuicEndpoint（Listener）/QuicConn（Endpoint）/流/证书/0-RTT | proto、quinn、rustls、rcgen、postcard |
+| echostream-ws | WebSocket 服务端：WsServer/WsServerBuilder，帧协议与 QUIC 一致，流结束用 StreamEnd | core、proto、tokio-tungstenite |
+| echostream-web | WebTransport 服务端：WebServer/WebServerBuilder | core、proto、wtransport |
+| echostream-derive | #[rpc]/#[event]/#[stream] | syn/quote/proc-macro2 |
+| echostream-discovery | mDNS 发现：advertise/discover/discover_stream + metadata | proto、mdns-sd、tokio |
+| echostream-middleware-* | 数据面扩展集合：timeout/logging/auth 校验等 | core |
+| echostream-plugin-* | 控制面扩展集合：reconnect/auth/logging 等 | core |
+| echostream | 统一入口：re-export + prelude + 宏 + QUIC bind/connect 便捷 | 全部 |
+| bindings/* | 各语言绑定（node/python/wasm/web） | 各自工具链 |
 
 ## 关键设计
 
-- **通信模型**：每条消息一条 QUIC 流。RPC 走双向流（请求 + 响应同流），事件/流走单向流。流首帧由分派层读出并缓存进 `StreamReceiver`。
-- **强类型 Handler**：`RpcHandler<Req, Resp>` / `EventHandler<Data>` 只面对具体类型，编解码由框架统一处理（`handle_encoded` 入口），宏自动实现。
-- **错误转换**：transport 层用本地 trait（`ToEcho`）将 quinn 错误转为 `proto::Error`，避免孤儿规则。
-- **会话状态**：`Session` 为具体结构（Arc 共享），提供会话级 K-V 状态与 `request`/`emit`/`create_stream` 双向通信。
-- **钩子**：`on_start` / `on_stop` / `on_connect` / `on_disconnect`（同步回调，异步逻辑内部 spawn）。
-- **中间件**：`Middleware::on_message` 洋葱链，返回 `None` 拦截。
-- **插件**：`ServerPlugin::install(Box<Self>, ServerBuilder)` 打包处理器与钩子。
-- **优雅关闭**：`Server::shutdown()` 停止接受新连接并触发 `on_stop`。
+- **传输无关框架**：core 只依赖 proto 的接口（Endpoint/FrameIo/Listener），
+  具体传输（QUIC/WS/WebTransport）各自独立 crate 实现；ServerBuilder::listener /
+  ClientBuilder::from_endpoint 注入任意传输，QUIC 便捷 API 走 core 的 quic feature。
+- **帧协议统一**：所有传输同一线缆格式（长度前缀 + postcard Message）；
+  WebSocket 无流关闭语义 → StreamEnd 消息显式标记。
+- **通信模型**：RPC 每请求一条逻辑流（业界标准，QUIC 流廉价无队头阻塞）；
+  事件走复用通道（长连接 uni 流批量帧）或 datagram（不可靠）。
+- **扩展机制**：中间件 = 数据面（消息拦截/修改）；插件 = 控制面（生命周期/配置打包）。
+- **多端复用**：client-core 状态机 + proto 编解码编译 WASM，Web SDK 与 Rust 原生共享核心。
