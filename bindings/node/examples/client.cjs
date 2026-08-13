@@ -3,32 +3,42 @@
 // 运行：node examples/client.cjs（需先启动 examples/server.cjs）
 const { connect } = require("../index.js");
 
-// ---- postcard 编解码（varint，与 Rust 线缆格式一致）----
-function encodeU64(n) {
+// ---- postcard 编解码（与 Rust 线缆格式一致）----
+// i64 用 ZigZag varint：10 → 0x14；字符串 = varint 长度 + UTF-8 字节
+function encodeI64(n) {
+  const zz = BigInt.asUintN(64, (BigInt(n) << 1n) ^ (BigInt(n) >> 63n));
   const out = [];
-  while (n >= 0x80) {
-    out.push((n & 0x7f) | 0x80);
-    n = Math.floor(n / 128);
+  let v = zz;
+  while (v >= 0x80n) {
+    out.push(Number((v & 0x7fn) | 0x80n));
+    v >>= 7n;
   }
-  out.push(n);
+  out.push(Number(v));
   return out;
 }
 
-function decodeU64(bytes) {
-  let result = 0;
-  let shift = 0;
+function decodeI64(bytes) {
+  let v = 0n;
+  let shift = 0n;
   for (const b of bytes) {
-    result |= (b & 0x7f) << shift;
+    v |= BigInt(b & 0x7f) << shift;
     if (!(b & 0x80)) break;
-    shift += 7;
+    shift += 7n;
   }
-  return result;
+  return Number(BigInt.asIntN(64, (v >> 1n) ^ -(v & 1n)));
 }
 
 // 字符串：varint 长度 + UTF-8 字节
 function encodeString(s) {
   const buf = Buffer.from(s, "utf8");
-  return encodeU64(buf.length).concat([...buf]);
+  const out = [];
+  let n = buf.length;
+  while (n >= 0x80) {
+    out.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  out.push(n);
+  return out.concat([...buf]);
 }
 
 async function main() {
@@ -36,8 +46,8 @@ async function main() {
   console.log("[client] 已连接");
 
   // RPC：add(10, 20) -> 30
-  const resp = await client.request("add", encodeU64(10).concat(encodeU64(20)));
-  console.log(`[client] add(10, 20) = ${decodeU64(Uint8Array.from(resp))}`);
+  const resp = await client.request("add", encodeI64(10).concat(encodeI64(20)));
+  console.log(`[client] add(10, 20) = ${decodeI64(Uint8Array.from(resp))}`);
 
   // 事件：hello
   await client.emit("hello", encodeString("来自 node 客户端"));

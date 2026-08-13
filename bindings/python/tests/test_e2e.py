@@ -5,31 +5,32 @@ import time
 import echostream
 
 
-def decode_u64(data: bytes) -> int:
-    """postcard varint 解码（u64）"""
-    result = 0
+def decode_i64(data: bytes) -> int:
+    """postcard varint 解码（i64，ZigZag：与 Rust 核心一致）"""
+    v = 0
     shift = 0
     for b in data:
-        result |= (b & 0x7F) << shift
+        v |= (b & 0x7F) << shift
         if not (b & 0x80):
             break
         shift += 7
-    return result
+    return (v >> 1) ^ -(v & 1)
 
 
-def encode_u64(n: int) -> bytes:
-    """postcard varint 编码（u64）"""
+def encode_i64(n: int) -> bytes:
+    """postcard varint 编码（i64，ZigZag：10 → 0x14）"""
+    zz = ((n << 1) ^ (n >> 63)) & ((1 << 64) - 1)
     out = bytearray()
-    while n >= 0x80:
-        out.append((n & 0x7F) | 0x80)
-        n >>= 7
-    out.append(n)
+    while zz >= 0x80:
+        out.append((zz & 0x7F) | 0x80)
+        zz >>= 7
+    out.append(zz)
     return bytes(out)
 
 
 def encode_tuple(a: int, b: int) -> bytes:
-    """(u64, u64) 载荷：顺序 varint 编码"""
-    return encode_u64(a) + encode_u64(b)
+    """(i64, i64) 载荷：顺序 ZigZag varint 编码"""
+    return encode_i64(a) + encode_i64(b)
 
 
 def main():
@@ -40,10 +41,10 @@ def main():
     received = []
 
     def handle_add(data: bytes) -> bytes:
-        a = decode_u64(data[:1])
-        b = decode_u64(data[1:2])
+        a = decode_i64(data[:1])
+        b = decode_i64(data[1:2])
         print(f"[py-server] add({a}, {b})")
-        return encode_u64(a + b)
+        return encode_i64(a + b)
 
     def handle_hello(data: bytes) -> None:
         msg = data.decode("utf-8")
@@ -85,15 +86,15 @@ def main():
 
     # 客户端也注册 add 处理器（支持服务端主动调用，双向通信）
     def client_add(data: bytes) -> bytes:
-        a = decode_u64(data[:1])
-        b = decode_u64(data[1:2])
-        return encode_u64(a + b)
+        a = decode_i64(data[:1])
+        b = decode_i64(data[1:2])
+        return encode_i64(a + b)
 
     client.add_rpc("add", client_add)
 
     resp = client.request("add", encode_tuple(10, 20))
-    assert decode_u64(resp) == 30, f"期望 30，实际 {decode_u64(resp)}"
-    print(f"[py-client] add(10, 20) = {decode_u64(resp)}")
+    assert decode_i64(resp) == 30, f"期望 30，实际 {decode_i64(resp)}"
+    print(f"[py-client] add(10, 20) = {decode_i64(resp)}")
 
     client.emit("hello", "from python".encode("utf-8"))
     time.sleep(0.2)
@@ -107,7 +108,7 @@ def main():
     print(f"[py-server] 在线会话: {len(sessions)}")
     for s in sessions:
         reply = s.request("add", encode_tuple(1, 1))
-        print(f"[py-server] 主动调用客户端 add(1,1) = {decode_u64(reply)}")
+        print(f"[py-server] 主动调用客户端 add(1,1) = {decode_i64(reply)}")
 
     # 流
     stream = client.create_stream("chat")

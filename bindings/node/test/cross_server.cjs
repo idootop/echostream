@@ -1,7 +1,7 @@
 // EchoStream 跨端矩阵：Node 服务端（供 Rust / Python 客户端连接）
 //
 // 线缆格式约定（与 Rust 核心一致）：
-// - RPC 载荷 = postcard 编码（varint）
+// - RPC 载荷 = postcard 编码（i64 为 ZigZag varint，String 为长度前缀 + UTF-8）
 // - 事件载荷 = postcard 编码的 String
 // - 流帧载荷 = 原始 UTF-8 字节
 //
@@ -47,20 +47,33 @@ function decodeString(bytes) {
   return bytes.subarray(n, n + len).toString("utf8");
 }
 
+// i64 ZigZag 编码（postcard 对 i64 的 varint 语义）：n -> 2n 或 -2n-1
+function zigzagEncode(n) {
+  return n < 0 ? -2 * n - 1 : 2 * n;
+}
+
+// ZigZag 解码：z -> 原值
+function zigzagDecode(z) {
+  const v = z >> 1;
+  return z & 1 ? -v - 1 : v;
+}
+
 async function main() {
   const port = Number(process.argv[2] || 5110);
   const addr = `127.0.0.1:${port}`;
   const builder = new ServerBuilder();
   builder.bind(addr);
 
-  // RPC：add，载荷为 (u64, u64) 两个连续 varint
+  // RPC：add，请求载荷为 postcard (i64, i64) = 两个 ZigZag varint；响应为 postcard i64
   builder.addRpc("add", async (err, payload) => {
     if (err) throw err;
     const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-    const [a, n] = decodeU64(bytes, 0);
-    const [b] = decodeU64(bytes, n);
+    const [aRaw, n] = decodeU64(bytes, 0);
+    const [bRaw] = decodeU64(bytes, n);
+    const a = zigzagDecode(aRaw);
+    const b = zigzagDecode(bRaw);
     console.log(`E2E_RPC add(${a}, ${b})`);
-    return encodeU64(a + b);
+    return encodeU64(zigzagEncode(a + b));
   });
 
   // 事件：hello，载荷为 postcard 编码的 String

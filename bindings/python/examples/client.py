@@ -8,25 +8,26 @@ import time
 import echostream
 
 
-def decode_u64(data: bytes) -> int:
-    """postcard varint 解码（u64）"""
-    result = 0
+def decode_i64(data: bytes) -> int:
+    """postcard varint 解码（i64，ZigZag：与 Rust 核心一致）"""
+    v = 0
     shift = 0
     for b in data:
-        result |= (b & 0x7F) << shift
+        v |= (b & 0x7F) << shift
         if not (b & 0x80):
             break
         shift += 7
-    return result
+    return (v >> 1) ^ -(v & 1)
 
 
-def encode_u64(n: int) -> bytes:
-    """postcard varint 编码（u64）"""
+def encode_i64(n: int) -> bytes:
+    """postcard varint 编码（i64，ZigZag：10 → 0x14）"""
+    zz = ((n << 1) ^ (n >> 63)) & ((1 << 64) - 1)
     out = bytearray()
-    while n >= 0x80:
-        out.append((n & 0x7F) | 0x80)
-        n >>= 7
-    out.append(n)
+    while zz >= 0x80:
+        out.append((zz & 0x7F) | 0x80)
+        zz >>= 7
+    out.append(zz)
     return bytes(out)
 
 
@@ -35,8 +36,8 @@ def main():
     print("[client] 已连接")
 
     # RPC：add(10, 20) -> 30
-    resp = client.request("add", encode_u64(10) + encode_u64(20))
-    print(f"[client] add(10, 20) = {decode_u64(resp)}")
+    resp = client.request("add", encode_i64(10) + encode_i64(20))
+    print(f"[client] add(10, 20) = {decode_i64(resp)}")
 
     # 事件：hello
     client.emit("hello", "来自 python 客户端".encode("utf-8"))

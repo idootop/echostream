@@ -1,7 +1,7 @@
 """EchoStream 跨端矩阵：Python 服务端（供 Rust / Node 客户端连接）
 
 线缆格式约定（与 Rust 核心一致）：
-- RPC 载荷 = postcard 编码（varint）
+- RPC 载荷 = postcard 编码（i64 为 ZigZag varint，String 为长度前缀 + UTF-8）
 - 事件载荷 = postcard 编码的 String
 - 流帧载荷 = 原始 UTF-8 字节
 
@@ -49,6 +49,16 @@ def decode_string(data: bytes) -> str:
     return data[end : end + length].decode("utf-8")
 
 
+def zigzag_encode(n: int) -> int:
+    """i64 ZigZag 编码（postcard 对 i64 的 varint 语义）；正值即 2n"""
+    return (n << 1) ^ (n >> 63)
+
+
+def zigzag_decode(z: int) -> int:
+    """ZigZag 解码：z -> 原值"""
+    return (z >> 1) ^ -(z & 1)
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5110
     addr = f"127.0.0.1:{port}"
@@ -56,10 +66,12 @@ def main():
     builder.bind(addr)
 
     def handle_add(data: bytes) -> bytes:
-        a, end = decode_u64(data)
-        b, _ = decode_u64(data, end)
+        # 请求载荷为 postcard (i64, i64) = 两个 ZigZag varint
+        a_raw, end = decode_u64(data)
+        b_raw, _ = decode_u64(data, end)
+        a, b = zigzag_decode(a_raw), zigzag_decode(b_raw)
         print(f"E2E_RPC add({a}, {b})", flush=True)
-        return encode_u64(a + b)
+        return encode_u64(zigzag_encode(a + b))
 
     def handle_hello(data: bytes) -> None:
         print(f"E2E_EVENT_RECEIVED: {decode_string(data)}", flush=True)

@@ -3,8 +3,8 @@
 #
 # 每个组合：启动服务端 -> 等待 E2E_SERVER_READY -> 运行客户端 ->
 #           检查客户端 add(10, 20) = 30 且退出码 0 ->
-#           检查服务端收到事件(E2E_EVENT_RECEIVED)与 3 帧流(E2E_STREAM_FRAMES=3) ->
-#           终止服务端。
+#           检查服务端解码出 add(10, 20)、收到事件(E2E_EVENT_RECEIVED)、
+#           3 帧流(E2E_STREAM_FRAMES=3) -> 终止服务端。
 #
 # 端口：5110-5115，每个组合独立。任一失败记录并继续，最后汇总 PASS/FAIL 表。
 # 用法：bash tools/e2e/cross_matrix.sh
@@ -67,10 +67,11 @@ run_combo() { # 名称 端口 服务端命令 客户端命令
   eval "$client_cmd" > "$clog" 2>&1
   local cexit=$?
 
-  # 判定：客户端退出码 + 输出 + 服务端标记
+  # 判定：客户端退出码 + 输出 + 服务端标记（RPC 解码值 + 事件 + 流）
   local ok="PASS"
   [ $cexit -ne 0 ] && ok="FAIL"
   grep -qF "add(10, 20) = 30" "$clog" || ok="FAIL"
+  if ! wait_log "$slog" 5 "E2E_RPC add(10, 20)"; then ok="FAIL"; fi
   if ! wait_log "$slog" 5 "E2E_EVENT_RECEIVED"; then ok="FAIL"; fi
   if ! wait_log "$slog" 5 "E2E_STREAM_FRAMES=3"; then ok="FAIL"; fi
 

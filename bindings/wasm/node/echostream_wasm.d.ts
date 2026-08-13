@@ -56,6 +56,11 @@ export class ClientCoreHandle {
 export function decode_bytes(bytes: Uint8Array): Uint8Array;
 
 /**
+ * 解码 i64（ZigZag varint）
+ */
+export function decode_i64(bytes: Uint8Array): number;
+
+/**
  * 解码消息：postcard 字节 → JS 对象
  */
 export function decode_message(bytes: Uint8Array): any;
@@ -74,6 +79,11 @@ export function decode_u64(bytes: Uint8Array): number;
  * 编码帧：4 字节小端长度前缀 + 消息载荷
  */
 export function encode_frame(msg: any): Uint8Array;
+
+/**
+ * 编码 i64（ZigZag varint，与 postcard 有符号整数一致）
+ */
+export function encode_i64(n: bigint): Uint8Array;
 
 /**
  * 编码消息：JS 对象 → postcard 字节

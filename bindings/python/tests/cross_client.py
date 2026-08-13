@@ -1,7 +1,7 @@
 """EchoStream 跨端矩阵：Python 客户端（连接 Rust / Node 服务端）
 
 线缆格式约定（与 Rust 核心一致）：
-- RPC 载荷 = postcard 编码（varint）
+- RPC 载荷 = postcard 编码（i64 为 ZigZag varint，String 为长度前缀 + UTF-8）
 - 事件载荷 = postcard 编码的 String
 - 流帧载荷 = 原始 UTF-8 字节
 
@@ -49,14 +49,29 @@ def encode_tuple(a: int, b: int) -> bytes:
     return encode_u64(a) + encode_u64(b)
 
 
+def zigzag_encode(n: int) -> int:
+    """i64 ZigZag 编码（postcard 对 i64 的 varint 语义）；正值即 2n"""
+    return (n << 1) ^ (n >> 63)
+
+
+def zigzag_decode(z: int) -> int:
+    """ZigZag 解码：z -> 原值"""
+    return (z >> 1) ^ -(z & 1)
+
+
+def encode_tuple_i64(a: int, b: int) -> bytes:
+    """(i64, i64) 载荷：add RPC 请求，postcard i64 为 ZigZag varint"""
+    return encode_u64(zigzag_encode(a)) + encode_u64(zigzag_encode(b))
+
+
 def main():
     addr = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1:5110"
     client = echostream.connect(addr)
     print("[py-client] 已连接", flush=True)
 
-    # RPC：add(10, 20) = 30
-    resp = client.request("add", encode_tuple(10, 20))
-    total = decode_u64(resp)[0]
+    # RPC：add(10, 20) = 30（载荷为 postcard (i64, i64) = 两个 ZigZag varint）
+    resp = client.request("add", encode_tuple_i64(10, 20))
+    total = zigzag_decode(decode_u64(resp)[0])
     print(f"add(10, 20) = {total}", flush=True)
     assert total == 30, f"add 期望 30，实际 {total}"
 

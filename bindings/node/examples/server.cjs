@@ -3,32 +3,42 @@
 // 运行：node examples/server.cjs（另开终端运行 examples/client.cjs）
 const { ServerBuilder } = require("../index.js");
 
-// ---- postcard 编解码（varint，与 Rust 线缆格式一致）----
-function encodeU64(n) {
+// ---- postcard 编解码（与 Rust 线缆格式一致）----
+// i64 用 ZigZag varint：10 → 0x14；字符串 = varint 长度 + UTF-8 字节
+function encodeI64(n) {
+  const zz = BigInt.asUintN(64, (BigInt(n) << 1n) ^ (BigInt(n) >> 63n));
   const out = [];
-  while (n >= 0x80) {
-    out.push((n & 0x7f) | 0x80);
-    n = Math.floor(n / 128);
+  let v = zz;
+  while (v >= 0x80n) {
+    out.push(Number((v & 0x7fn) | 0x80n));
+    v >>= 7n;
   }
-  out.push(n);
+  out.push(Number(v));
   return out;
 }
 
-function decodeU64(bytes) {
-  let result = 0;
-  let shift = 0;
+function decodeI64(bytes) {
+  let v = 0n;
+  let shift = 0n;
   for (const b of bytes) {
-    result |= (b & 0x7f) << shift;
+    v |= BigInt(b & 0x7f) << shift;
     if (!(b & 0x80)) break;
-    shift += 7;
+    shift += 7n;
   }
-  return result;
+  return Number(BigInt.asIntN(64, (v >> 1n) ^ -(v & 1n)));
 }
 
 // 字符串：varint 长度 + UTF-8 字节
 function encodeString(s) {
   const buf = Buffer.from(s, "utf8");
-  return encodeU64(buf.length).concat([...buf]);
+  const out = [];
+  let n = buf.length;
+  while (n >= 0x80) {
+    out.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  out.push(n);
+  return out.concat([...buf]);
 }
 
 function decodeString(bytes) {
@@ -50,13 +60,13 @@ async function main() {
   const builder = new ServerBuilder();
   builder.bind("127.0.0.1:5101");
 
-  // add RPC：载荷 (u64, u64) → 响应 u64
+  // add RPC：载荷 (i64, i64) → 响应 i64
   builder.addRpc("add", async (err, payload) => {
     if (err) throw err;
     const bytes = payload instanceof Uint8Array ? payload : Uint8Array.from(payload);
-    const [a, b] = [decodeU64(bytes.subarray(0, 1)), decodeU64(bytes.subarray(1))];
+    const [a, b] = [decodeI64(bytes.subarray(0, 1)), decodeI64(bytes.subarray(1, 2))];
     console.log(`[server] add(${a}, ${b})`);
-    return Buffer.from(encodeU64(a + b));
+    return Buffer.from(encodeI64(a + b));
   });
 
   // hello 事件：打印收到的文本

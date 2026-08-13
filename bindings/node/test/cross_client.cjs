@@ -1,7 +1,7 @@
 // EchoStream 跨端矩阵：Node 客户端（连接 Rust / Python 服务端）
 //
 // 线缆格式约定（与 Rust 核心一致）：
-// - RPC 载荷 = postcard 编码（varint）
+// - RPC 载荷 = postcard 编码（i64 为 ZigZag varint，String 为长度前缀 + UTF-8）
 // - 事件载荷 = postcard 编码的 String
 // - 流帧载荷 = 原始 UTF-8 字节
 //
@@ -46,14 +46,30 @@ function encodeTuple(a, b) {
   return Buffer.concat([encodeU64(a), encodeU64(b)]);
 }
 
+// i64 ZigZag 编码（postcard 对 i64 的 varint 语义）：n -> 2n 或 -2n-1
+function zigzagEncode(n) {
+  return n < 0 ? -2 * n - 1 : 2 * n;
+}
+
+// ZigZag 解码：z -> 原值
+function zigzagDecode(z) {
+  const v = z >> 1;
+  return z & 1 ? -v - 1 : v;
+}
+
+// (i64, i64) -> postcard 编码（add RPC 请求载荷）
+function encodeTupleI64(a, b) {
+  return Buffer.concat([encodeU64(zigzagEncode(a)), encodeU64(zigzagEncode(b))]);
+}
+
 async function main() {
   const addr = process.argv[2] || "127.0.0.1:5110";
   const client = await connect(addr);
   console.log("[node-client] 已连接");
 
-  // RPC：add(10, 20) = 30
-  const resp = await client.request("add", Array.from(encodeTuple(10, 20)));
-  const sum = decodeU64(Buffer.from(resp), 0)[0];
+  // RPC：add(10, 20) = 30（载荷为 postcard (i64, i64) = 两个 ZigZag varint）
+  const resp = await client.request("add", Array.from(encodeTupleI64(10, 20)));
+  const sum = zigzagDecode(decodeU64(Buffer.from(resp), 0)[0]);
   console.log(`add(10, 20) = ${sum}`);
   if (sum !== 30) throw new Error(`add 期望 30，实际 ${sum}`);
 

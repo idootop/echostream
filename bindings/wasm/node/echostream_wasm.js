@@ -478,6 +478,30 @@ function decode_bytes(bytes) {
 exports.decode_bytes = decode_bytes;
 
 /**
+ * 解码 i64（ZigZag varint）
+ * @param {Uint8Array} bytes
+ * @returns {number}
+ */
+function decode_i64(bytes) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.decode_i64(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getFloat64(retptr + 8 * 0, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        return r0;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+exports.decode_i64 = decode_i64;
+
+/**
  * 解码消息：postcard 字节 → JS 对象
  * @param {Uint8Array} bytes
  * @returns {any}
@@ -582,6 +606,26 @@ function encode_frame(msg) {
     }
 }
 exports.encode_frame = encode_frame;
+
+/**
+ * 编码 i64（ZigZag varint，与 postcard 有符号整数一致）
+ * @param {bigint} n
+ * @returns {Uint8Array}
+ */
+function encode_i64(n) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        wasm.encode_i64(retptr, n);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v1 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export4(r0, r1 * 1, 1);
+        return v1;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+exports.encode_i64 = encode_i64;
 
 /**
  * 编码消息：JS 对象 → postcard 字节

@@ -14,10 +14,12 @@ export const clientcorehandle_on_rpc: (a: number, b: number, c: number, d: numbe
 export const clientcorehandle_open_stream: (a: number, b: number, c: number) => bigint;
 export const clientcorehandle_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const decode_bytes: (a: number, b: number, c: number) => void;
+export const decode_i64: (a: number, b: number, c: number) => void;
 export const decode_message: (a: number, b: number, c: number) => void;
 export const decode_string: (a: number, b: number, c: number) => void;
 export const decode_u64: (a: number, b: number, c: number) => void;
 export const encode_frame: (a: number, b: number) => void;
+export const encode_i64: (a: number, b: bigint) => void;
 export const encode_message: (a: number, b: number) => void;
 export const encode_payload: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;

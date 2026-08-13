@@ -71,6 +71,22 @@ pub fn decode_u64(bytes: &[u8]) -> Result<f64, JsValue> {
     Ok(v as f64)
 }
 
+/// 编码 i64（ZigZag varint，与 postcard 有符号整数一致）
+#[wasm_bindgen]
+pub fn encode_i64(n: i64) -> Vec<u8> {
+    let mut w = Writer::default();
+    w.varint(((n << 1) ^ (n >> 63)) as u64);
+    w.bytes
+}
+
+/// 解码 i64（ZigZag varint）
+#[wasm_bindgen]
+pub fn decode_i64(bytes: &[u8]) -> Result<f64, JsValue> {
+    let mut r = Reader::new(bytes);
+    let v = r.varint()?;
+    Ok(((v >> 1) as i64 ^ -((v & 1) as i64)) as f64)
+}
+
 /// 解码 string
 #[wasm_bindgen]
 pub fn decode_string(bytes: &[u8]) -> Result<String, JsValue> {

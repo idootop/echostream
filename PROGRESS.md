@@ -42,6 +42,19 @@
   - `echostream-middleware-logging`：结构化消息日志
   - `plugin_stack` 示例：三件套同用（拦截 → 认证 → 重连 → 重新认证全链路验证）
 - [x] 服务发现通用化：`ServiceInfo{name, addr, metadata}` + `advertise_with` 携带 TXT 元数据
+- [x] RPC 重试插件 `echostream-plugin-retry`（RetryPolicy + request_with_retry，
+      仅重试可恢复错误；与 reconnect/auth 协同验证）
+- [x] 测试补全（E1/E2）：proto 线缆格式 5 项 + core QUIC 回环集成 7 项 +
+      client-core 状态机 10 项，共 22 项全绿；clippy 零警告
+- [x] benchmark 负载矩阵（E3）：RPC 64B/4KiB/256KiB 延迟与并发、
+      事件 64B/4KiB、不可靠事件 64B/1KiB（docs/BENCHMARK.md）
+- [x] 各端 examples（E4）：bindings/node/examples 与 bindings/python/examples
+      （server + client，均验证通过）
+- [x] 跨端 E2E 矩阵（E5）：Rust ↔ Node ↔ Python 6 组合全 PASS
+      （tools/e2e/cross_matrix.sh + e2e_peer 示例）
+- [x] 跨端载荷约定统一：postcard i64 ZigZag varint（10 → 0x14），
+      wasm 新增 encode_i64/decode_i64 原语，Node/Python 测试与示例
+      全部统一（E5 发现：同端测试曾用手写 u64 varint 掩盖不一致）
 - [ ] 正式发布 v0.1（需 crates.io / npm / PyPI 凭据，按 RELEASE.md 执行）
 - [ ] 性能调优（可选：多流并行/连接池/零拷贝）
 
@@ -60,3 +73,5 @@
 - 服务端 accept 后 spawn 并行处理流（RPC 不阻塞 accept 循环，避免事件饥饿）
 - 客户端主动关闭（`close()`）后断开回调不再触发（`is_closed`），重连插件据此停止
 - 认证竞态：认证事件与业务请求在不同任务并发处理，中间件轮询等待认证状态生效
+- 跨端载荷：postcard 对 i64 用 ZigZag varint（u64 才是普通 varint），
+  各端手写编解码必须遵循；wasm 提供 encode_i64/decode_i64 原语避免歧义

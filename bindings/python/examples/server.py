@@ -9,25 +9,26 @@ import threading
 import echostream
 
 
-def decode_u64(data: bytes) -> int:
-    """postcard varint 解码（u64）"""
-    result = 0
+def decode_i64(data: bytes) -> int:
+    """postcard varint 解码（i64，ZigZag：与 Rust 核心一致）"""
+    v = 0
     shift = 0
     for b in data:
-        result |= (b & 0x7F) << shift
+        v |= (b & 0x7F) << shift
         if not (b & 0x80):
             break
         shift += 7
-    return result
+    return (v >> 1) ^ -(v & 1)
 
 
-def encode_u64(n: int) -> bytes:
-    """postcard varint 编码（u64）"""
+def encode_i64(n: int) -> bytes:
+    """postcard varint 编码（i64，ZigZag：10 → 0x14）"""
+    zz = ((n << 1) ^ (n >> 63)) & ((1 << 64) - 1)
     out = bytearray()
-    while n >= 0x80:
-        out.append((n & 0x7F) | 0x80)
-        n >>= 7
-    out.append(n)
+    while zz >= 0x80:
+        out.append((zz & 0x7F) | 0x80)
+        zz >>= 7
+    out.append(zz)
     return bytes(out)
 
 
@@ -47,10 +48,10 @@ def main():
 
     # add RPC：载荷 (u64, u64) → 响应 u64
     def handle_add(data: bytes) -> bytes:
-        a = decode_u64(data[:1])
-        b = decode_u64(data[1:2])
+        a = decode_i64(data[:1])
+        b = decode_i64(data[1:2])
         print(f"[server] add({a}, {b})")
-        return encode_u64(a + b)
+        return encode_i64(a + b)
 
     # hello 事件：打印收到的文本
     def handle_hello(data: bytes) -> None:
