@@ -1,7 +1,9 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-/// 数据包
+/// 消息帧 —— 传输的基本单位
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Message {
     /// RPC 请求
@@ -10,55 +12,55 @@ pub enum Message {
     Response(ResponseMsg),
     /// 单向事件
     Event(EventMsg),
-    /// 数据流
+    /// 流数据
     Stream(StreamMsg),
 }
 
-/// RPC请求载荷
+/// RPC 请求载荷
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestMsg {
-    /// 请求ID
-    pub id: u32,
+    /// 请求 ID（用于匹配响应）
+    pub id: u64,
     /// 处理器名称
     pub name: String,
-    /// 请求数据
-    pub data: Option<Bytes>,
+    /// 请求数据（序列化后的载荷）
+    pub data: Bytes,
 }
 
-/// RPC响应载荷
+/// RPC 响应载荷
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResponseMsg {
-    /// 对应请求的 ID
-    pub id: u32,
+    /// 对应的请求 ID
+    pub id: u64,
     /// 状态码
     pub code: StatusCode,
-    /// 错误信息
+    /// 错误信息（失败时）
     pub message: Option<String>,
-    /// 响应数据
-    pub data: Option<Bytes>,
+    /// 响应数据（成功时）
+    pub data: Bytes,
 }
 
 /// 事件载荷
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EventMsg {
-    /// 事件ID
-    pub id: u32,
+    /// 事件 ID（用于去重和排序）
+    pub id: u64,
     /// 事件名称
     pub name: String,
     /// 事件数据
-    pub data: Option<Bytes>,
+    pub data: Bytes,
 }
 
 /// 流数据载荷
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StreamMsg {
     /// 所属流的 ID
-    pub id: u32,
-    /// 名称
+    pub id: u64,
+    /// 流名称
     pub name: String,
-    /// 帧序列号
-    pub seq: u32,
-    /// 时间戳（发送方目标时间，毫秒）
+    /// 帧序列号（单调递增，用于丢包检测和排序）
+    pub seq: u64,
+    /// 发送方时间戳（毫秒，用于时间对齐）
     pub sender_ts: Timestamp,
     /// 流数据
     pub data: Bytes,
@@ -75,7 +77,7 @@ impl Timestamp {
     pub fn now() -> Self {
         Self(
             SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
+                .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or_default(),
         )
@@ -106,22 +108,12 @@ impl StatusCode {
     pub const INVALID_PARAM: Self = Self(5);
 
     /// 快速创建自定义状态码
-    pub fn new(code: u16) -> Self {
+    pub const fn new(code: u16) -> Self {
         Self(code)
     }
 
-    /// 获取原始u16值
-    pub fn as_u16(&self) -> u16 {
-        self.0
-    }
-
-    /// 判断是否为成功状态
-    pub fn is_success(&self) -> bool {
+    /// 是否为成功状态
+    pub const fn is_success(&self) -> bool {
         self.0 == 0
-    }
-
-    /// 判断是否为错误状态（非0均视为错误）
-    pub fn is_error(&self) -> bool {
-        !self.is_success()
     }
 }

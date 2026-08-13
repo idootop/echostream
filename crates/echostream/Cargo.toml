@@ -14,11 +14,18 @@ description = "基于 QUIC 的双向 RPC 和流传输框架 - 统一入口"
 [dependencies]
 echostream-core = { workspace = true }
 echostream-proto = { workspace = true }
-echostream-transport = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+
 echostream-derive = { workspace = true, optional = true }
 echostream-discovery = { workspace = true, optional = true }
 
+[dev-dependencies]
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
 [features]
-default = ['derive', 'discovery']
+default = []
 derive = ["dep:echostream-derive"]
 discovery = ["dep:echostream-discovery"]
