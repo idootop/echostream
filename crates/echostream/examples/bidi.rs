@@ -70,20 +70,17 @@ async fn main() -> Result<()> {
     let addr = "127.0.0.1:5001".to_string();
     let server_addr = addr.clone();
 
-    let server_handle = tokio::spawn(async move {
-        ServerBuilder::new()
-            .bind(&server_addr)
-            .add_rpc(Ping)
-            .add_event(OnJoin)
-            .middleware(LogMiddleware)
-            .on_start(|ctx| println!("[server] 启动，全局状态: {:?}", ctx.sessions().len()))
-            .on_connect(|s| println!("[server] 客户端连接: {}", s.peer_addr()))
-            .on_disconnect(|s| println!("[server] 客户端断开: {}", s.peer_addr()))
-            .build()
-            .await?
-            .run()
-            .await
-    });
+    let server = ServerBuilder::new()
+        .bind(&server_addr)
+        .add_rpc(Ping)
+        .add_event(OnJoin)
+        .middleware(LogMiddleware)
+        .on_start(|ctx| println!("[server] 启动，全局状态: {:?}", ctx.sessions().len()))
+        .on_connect(|s| println!("[server] 客户端连接: {}", s.peer_addr()))
+        .on_disconnect(|s| println!("[server] 客户端断开: {}", s.peer_addr()))
+        .build()
+        .await?;
+    let server_handle = tokio::spawn(async move { server.run().await });
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
@@ -110,3 +107,5 @@ async fn main() -> Result<()> {
     println!("[client] 全部完成");
     Ok(())
 }
+
+// 说明：优雅关闭见 discovery 示例（server.shutdown()）

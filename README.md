@@ -1,55 +1,115 @@
 # EchoStream
 
-> 基于 QUIC 的高性能异步双向 RPC 和流传输框架，让实时通信像写本地函数一样简单。
+> 基于 QUIC 的高性能异步双向 RPC 与流传输框架，让实时通信像写本地函数一样简单。
 
-## 项目简介
+## 简介
 
-专为实时通信场景设计的 Rust RPC 框架，融合传统 RPC 的便利性和实时流传输能力，通过 QUIC 协议在单连接上同时处理控制信令和实时数据流。
+专为实时通信场景设计的 Rust RPC 框架，通过 QUIC 在单连接上同时处理控制信令与实时数据流，支持客户端与服务端**双向主动通信**：RPC 请求、事件推送、流式数据传输。
 
 ## 核心特性
 
-- **🔄 异步双向通信**: 客户端和服务端都可以主动发起请求、发送事件和推送流数据
-- **📡 多模态信令**: 支持 Request/Response、Event 和 Stream 三种通信模式
-- **🎵 流式传输**: 支持音视频等实时数据的低延迟传输，配备抖动缓冲和时间戳对齐
-- **⏱ 时间同步**: 内置类 NTP 时钟同步协议，确保分布式节点间的时间对齐
-- **🚀 基于 QUIC**: 利用 QUIC 的 0-RTT 握手、多路复用和自动拥塞控制
-- **🔍 服务发现**: 基于 mDNS 的零配置局域网服务发现（可选）
-- **🛡 安全传输**: 内置 TLS 1.3 加密，支持自签名和 CA 证书
-- **🧩 插件系统**: 模块化扩展机制，支持生命周期 hook 和配置定制
-- **🦀 开发友好**: 提供声明式 API 和过程宏，最小化样板代码
-
-## 适用场景
-
-EchoStream 特别适用于需要同时处理控制指令和实时数据的场景：
-
-- **实时音视频通信**: 低延迟音视频传输，支持多路复用和时间同步
-- **物联网设备控制**: 命令下发、状态上报和数据流采集
-- **游戏网络**: 游戏状态同步、事件广播和语音通信
-- **远程桌面**: 屏幕共享、输入控制和音频转发
-- **分布式系统**: 节点间通信、数据同步和事件总线
-
-## 项目架构
-
-采用 Cargo Workspace 管理的 monorepo 架构:
-
-```
-echostream/
-├── Cargo.toml               # Workspace 定义
-├── crates/                  # 所有 Rust crates
-│   ├── echostream/          # 统一入口，重导出所有公共 API
-│   ├── echostream-core/     # 核心框架(RPC、流传输、连接管理)
-│   ├── echostream-discovery/# 服务发现(mDNS)
-│   ├── echostream-derive/   # 过程宏(rpc、event、stream)
-│   └── echostream-types/    # 公共类型和错误定义
-├── examples/                # 示例代码
-└── sdk/                     # 其他语言绑定(未来)
-    ├── nodejs/              # Node.js 绑定
-    └── python/              # Python 绑定
-```
+- **双向通信**：客户端和服务端都可以主动发起请求、发送事件和推送流
+- **三种模式**：RPC（请求/响应）、Event（单向事件）、Stream（连续数据流）
+- **基于 QUIC**：多路复用、0-RTT、自动拥塞控制、TLS 1.3 加密
+- **开箱即用**：自动生成自签名证书，开发环境零配置
+- **声明式宏**：`#[rpc]` / `#[event]` / `#[stream]`，业务只写强类型函数
+- **服务发现**：mDNS 局域网零配置发现（可选）
+- **可扩展**：中间件（数据面）+ 插件（控制面）
+- **轻量简单**：无过度抽象，错误处理与序列化由框架统一完成
 
 ## 快速开始
 
-> **开发中，敬请期待...**
+```rust
+use echostream::prelude::*;
+
+// 用声明式宏定义处理器，像写本地函数一样
+#[rpc("add")]
+async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+    Ok(a + b)
+}
+
+#[event("hello")]
+async fn on_hello(session: &Session, msg: String) -> Result<()> {
+    println!("[{}] {msg}", session.peer_addr());
+    Ok(())
+}
+
+#[stream("chat")]
+async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+    while let Some(frame) = stream.recv().await? {
+        println!("帧 #{}: {}", frame.seq, String::from_utf8_lossy(&frame.data));
+    }
+    Ok(())
+}
+
+// 服务端
+#[tokio::main]
+async fn main() -> Result<()> {
+    ServerBuilder::new()
+        .bind("0.0.0.0:5000")
+        .add_rpc(Add)
+        .add_event(OnHello)
+        .add_stream(OnChat)
+        .serve()
+        .await
+}
+
+// 客户端
+async fn client_demo() -> Result<()> {
+    let client = ClientBuilder::new().connect("127.0.0.1:5000").await?;
+
+    // RPC 调用
+    let sum: i64 = client.request("add", &(10, 20)).await?;
+
+    // 发送事件
+    client.emit("hello", &"world".to_string()).await?;
+
+    // 推送流数据
+    let mut stream = client.create_stream("chat").await?;
+    stream.send("你好").await?;
+    stream.finish()?;
+    Ok(())
+}
+```
+
+完整示例见 `crates/echostream/examples/`：
+
+| 示例 | 内容 |
+|------|------|
+| `simple_rpc` | RPC / Event / Stream 三种模式端到端 |
+| `bidi` | 服务端主动调用客户端、事件监听、中间件、生命周期钩子 |
+| `discovery` | mDNS 服务发现与连接 |
+
+## 服务发现
+
+```rust
+// 服务端广播
+let _advertiser = advertise("echo-server", 5000)?;
+
+// 客户端发现（局域网零配置）
+let addrs = discover("echo-server", Duration::from_secs(3)).await?;
+let client = ClientBuilder::new().connect(addrs[0]).await?;
+```
+
+## 架构
+
+```
+echostream        统一入口（重导出 + prelude + 宏）
+├── echostream-core        框架核心：Server/Client/Session/Router/Handler/中间件/插件
+├── echostream-transport   传输层：QUIC 封装（流、数据报、证书、帧编解码）
+├── echostream-proto       协议层：Message/Error（零运行时依赖）
+├── echostream-derive      过程宏：#[rpc] / #[event] / #[stream]
+└── echostream-discovery   服务发现：mDNS（独立可选）
+```
+
+通信模型：**每条消息使用独立 QUIC 流**，RPC 走双向流、事件/流走单向流，天然多路复用、背压隔离。
+
+## 开发
+
+```bash
+cargo build --workspace   # 编译
+cargo run -p echostream --example simple_rpc   # 端到端示例
+```
 
 ## License
 

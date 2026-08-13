@@ -16,4 +16,4 @@ echostream-proto = { workspace = true }
 
 mdns-sd = { workspace = true }
 tokio = { workspace = true }
-anyhow = { workspace = true }
+tokio-stream = "0.1.19"

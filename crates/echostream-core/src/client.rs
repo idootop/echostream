@@ -57,6 +57,7 @@ impl Client {
 /// 客户端构建器
 pub struct ClientBuilder {
     router: Arc<Router>,
+    timeout: std::time::Duration,
 }
 
 impl Default for ClientBuilder {
@@ -70,7 +71,14 @@ impl ClientBuilder {
     pub fn new() -> Self {
         Self {
             router: Arc::new(Router::default()),
+            timeout: std::time::Duration::from_secs(30),
         }
+    }
+
+    /// 设置 RPC 请求默认超时（默认 30 秒）
+    pub fn timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// 注册 RPC 处理器（处理服务端主动调用）
@@ -102,7 +110,7 @@ impl ClientBuilder {
             })?;
         let conn: QuicConn = connect(addr).await?;
         let ctx = Arc::new(ServerContext::new());
-        let session = Session::new(ctx.next_session_id(), conn, ctx.clone());
+        let session = Session::with_timeout(ctx.next_session_id(), conn, ctx.clone(), self.timeout);
         let client = Client {
             session,
             router: self.router,

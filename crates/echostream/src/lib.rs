@@ -14,6 +14,10 @@ pub use echostream_proto::{
 #[cfg(feature = "derive")]
 pub use echostream_derive::{event, rpc, stream};
 
+/// 服务发现（feature = "discovery"）
+#[cfg(feature = "discovery")]
+pub use echostream_discovery::{Advertiser, advertise, discover, discover_stream};
+
 /// 常用类型预导入
 pub mod prelude {
     pub use crate::*;

@@ -24,54 +24,64 @@ pub struct Server {
     on_stop: Vec<Hook<ServerContext>>,
     on_connect: Vec<Hook<Session>>,
     on_disconnect: Vec<Hook<Session>>,
+    shutdown_signal: tokio::sync::Notify,
 }
 
 impl Server {
-    /// 运行服务（阻塞直到端点关闭）
-    pub async fn run(self) -> echostream_proto::Result<()> {
-        let Server {
-            endpoint,
-            router,
-            ctx,
-            on_start,
-            on_stop,
-            on_connect,
-            on_disconnect,
-        } = self;
+    /// 本地监听地址
+    pub fn endpoint_addr(&self) -> Option<std::net::SocketAddr> {
+        self.endpoint.local_addr().ok()
+    }
 
-        for hook in &on_start {
-            hook(&ctx);
+    /// 运行服务（阻塞直到 `shutdown` 被调用）
+    pub async fn run(&self) -> echostream_proto::Result<()> {
+        for hook in &self.on_start {
+            hook(&self.ctx);
         }
 
-        while let Some(conn) = endpoint.accept().await {
-            {
-                let session = Session::new(ctx.next_session_id(), conn, ctx.clone());
-                ctx.register_session(session.clone());
-                tracing::debug!(
-                    "客户端连接: {} (session {})",
-                    session.peer_addr(),
-                    session.id()
-                );
-                let s = session.clone();
-                for hook in &on_connect {
-                    hook(&s);
-                }
-                let hooks = on_disconnect.clone();
-                let r = router.clone();
-                let c = ctx.clone();
-                tokio::spawn(async move {
-                    handle_connection(session, r, c).await;
-                    for hook in &hooks {
-                        hook(&s);
+        loop {
+            tokio::select! {
+                conn = self.endpoint.accept() => {
+                    match conn {
+                        Some(conn) => {
+                            let session = Session::new(self.ctx.next_session_id(), conn, self.ctx.clone());
+                            self.ctx.register_session(session.clone());
+                            tracing::debug!(
+                                "客户端连接: {} (session {})",
+                                session.peer_addr(),
+                                session.id()
+                            );
+                            let s = session.clone();
+                            for hook in &self.on_connect {
+                                hook(&s);
+                            }
+                            let hooks = self.on_disconnect.clone();
+                            let r = self.router.clone();
+                            let c = self.ctx.clone();
+                            tokio::spawn(async move {
+                                handle_connection(session, r, c).await;
+                                for hook in &hooks {
+                                    hook(&s);
+                                }
+                            });
+                        }
+                        None => break,
                     }
-                });
+                }
+                _ = self.shutdown_signal.notified() => break,
             }
         }
 
-        for hook in &on_stop {
-            hook(&ctx);
+        for hook in &self.on_stop {
+            hook(&self.ctx);
         }
         Ok(())
+    }
+
+    /// 优雅关闭：停止接受新连接并触发 on_stop
+    pub fn shutdown(&self) {
+        self.shutdown_signal.notify_waiters();
+        self.endpoint.close();
     }
 }
 
@@ -241,10 +251,11 @@ impl ServerBuilder {
             on_stop: self.on_stop,
             on_connect: self.on_connect,
             on_disconnect: self.on_disconnect,
+            shutdown_signal: tokio::sync::Notify::new(),
         })
     }
 
-    /// 构建并运行
+    /// 构建并运行（阻塞直到服务关闭）
     pub async fn serve(self) -> echostream_proto::Result<()> {
         self.build().await?.run().await
     }

@@ -26,28 +26,28 @@
 - 修复：流首帧在分派时丢失的 bug（`StreamReceiver` 缓存首帧）
 - workspace 全量编译通过，clippy 零警告
 
-### ⏳ P1 简化抽象落地（进行中）
+### ✅ P1（2026-08）简化抽象落地
 
-- [x] derive 宏：`#[rpc]` / `#[event]` / `#[stream]`（强类型 Handler 自动生成，消除手动 trait 样板）
+- [x] derive 宏：`#[rpc]` / `#[event]` / `#[stream]`（强类型 Handler 自动生成）
   - 支持 Session 可选、数据参数可选、`Result<T>` 或直接返回值
   - 宏生成 PascalCase 零大小结构体（`add` → `Add`），注册时 `add_rpc(Add)`
-- [x] 生命周期钩子：`on_start` / `on_stop` / `on_connect` / `on_disconnect`（服务端）
-- [x] 双向主动调用示例（`bidi`）：服务端通过 `session.request()` 主动调用客户端 RPC
-- [x] 客户端事件监听：`ClientBuilder::add_event` 接收服务端推送
-- [x] 中间件（数据面）：`Middleware` trait，洋葱链拦截/修改入站消息，`LogMiddleware` 示例
-- [x] 插件机制（控制面）：`ServerPlugin` trait，`install(Box<Self>, ServerBuilder)` 打包处理器与钩子
+- [x] 生命周期钩子：`on_start` / `on_stop` / `on_connect` / `on_disconnect`
+- [x] 双向主动调用（`bidi` 示例）：服务端通过 `session.request()` 主动调用客户端 RPC
+- [x] 客户端事件监听：`ClientBuilder::add_event`
+- [x] 中间件（数据面）：`Middleware` 洋葱链拦截/修改，`LogMiddleware` 示例
+- [x] 插件机制（控制面）：`ServerPlugin::install` 打包处理器与钩子
+
+### ⏳ P2 v0.1 功能（进行中）
+
+- [x] 服务发现（mDNS）：`advertise` / `discover` / `discover_stream`，`discovery` 示例跑通
+- [x] 请求超时配置：`ClientBuilder::timeout` + `Session::request_with_timeout`
+- [x] 优雅关闭：`Server::shutdown()` 停止接受 + 触发 `on_stop`
+- [x] 文档收敛：README 重写为可用示例，删除过时的 API_DESIGN/core.md，MODULE_RESPONSIBILITIES 对齐当前实现
+- [x] CI：GitHub Actions（fmt + clippy -D warnings + build）
+- [ ] 重连与断线自动重连
 - [ ] 客户端钩子（on_connect/on_disconnect）
-- [ ] 请求超时可配置
-- [ ] 服务端事件广播到单会话/全体的完整示例
-
-### ⏳ P2 v0.1 功能
-
-- [ ] 服务发现（mDNS）接入
-- [ ] 连接生命周期与优雅关闭
-- [ ] 请求超时配置、重连
-- [ ] 文档收敛（以 MODULE_RESPONSIBILITIES 为准）
-- [ ] CI（cargo check + clippy）
-- [ ] 发布 v0.1
+- [ ] 示例补齐：广播、认证中间件
+- [ ] 发布 v0.1（crates.io）
 
 ### ⏳ P3 多端支持
 

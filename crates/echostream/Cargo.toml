@@ -26,6 +26,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [features]
-default = ["derive"]
+default = ["derive", "discovery"]
 derive = ["dep:echostream-derive"]
 discovery = ["dep:echostream-discovery"]

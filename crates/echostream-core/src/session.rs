@@ -29,10 +29,21 @@ struct SessionInner {
     ctx: Arc<ServerContext>,
     state: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
     next_msg_id: AtomicU64,
+    timeout: std::time::Duration,
 }
 
 impl Session {
     pub(crate) fn new(id: u64, conn: QuicConn, ctx: Arc<ServerContext>) -> Self {
+        Self::with_timeout(id, conn, ctx, DEFAULT_TIMEOUT)
+    }
+
+    /// 创建会话并指定请求超时
+    pub(crate) fn with_timeout(
+        id: u64,
+        conn: QuicConn,
+        ctx: Arc<ServerContext>,
+        timeout: std::time::Duration,
+    ) -> Self {
         Self {
             inner: Arc::new(SessionInner {
                 id,
@@ -40,6 +51,7 @@ impl Session {
                 ctx,
                 state: RwLock::new(HashMap::new()),
                 next_msg_id: AtomicU64::new(1),
+                timeout,
             }),
         }
     }
@@ -87,11 +99,22 @@ impl Session {
 
     // ==================== 双向主动通信 ====================
 
-    /// 发起 RPC 请求并等待响应
+    /// 发起 RPC 请求并等待响应（使用默认超时）
     pub async fn request<Req: Serialize + Send, Resp: DeserializeOwned + Send>(
         &self,
         name: &str,
         req: &Req,
+    ) -> Result<Resp> {
+        self.request_with_timeout(name, req, self.inner.timeout)
+            .await
+    }
+
+    /// 发起 RPC 请求并等待响应（指定超时）
+    pub async fn request_with_timeout<Req: Serialize + Send, Resp: DeserializeOwned + Send>(
+        &self,
+        name: &str,
+        req: &Req,
+        timeout: std::time::Duration,
     ) -> Result<Resp> {
         let mut stream = self.inner.conn.open_bi().await?;
         let id = self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed);
@@ -104,7 +127,7 @@ impl Session {
             .await?;
         stream.finish()?;
 
-        let resp = tokio::time::timeout(DEFAULT_TIMEOUT, async {
+        let resp = tokio::time::timeout(timeout, async {
             loop {
                 match stream.read_message().await? {
                     Some(Message::Response(r)) if r.id == id => return Ok(r),

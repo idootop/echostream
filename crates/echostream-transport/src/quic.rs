@@ -134,7 +134,8 @@ fn ensure_crypto_provider() {
 
 // ======================== 服务端端点 ========================
 
-/// 服务端端点（监听 + 接受连接）
+/// 服务端端点（监听 + 接受连接，Clone 共享）
+#[derive(Clone)]
 pub struct QuicEndpoint {
     endpoint: quinn::Endpoint,
 }
