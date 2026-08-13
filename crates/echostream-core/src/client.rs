@@ -11,6 +11,9 @@ use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
 use crate::plugin::ClientPlugin;
 use crate::router::Router;
+
+/// 断开回调（连接断开时触发，主动关闭除外）
+type DisconnectHook = Arc<dyn Fn(&Client) + Send + Sync>;
 use crate::session::Session;
 use crate::stream::StreamSender;
 
@@ -20,7 +23,7 @@ pub struct Client {
     session: Arc<std::sync::RwLock<Session>>,
     router: Arc<Router>,
     /// 断开回调（重连插件等使用）
-    on_disconnect: Arc<std::sync::RwLock<Vec<Arc<dyn Fn(&Client) + Send + Sync>>>>,
+    on_disconnect: Arc<std::sync::RwLock<Vec<DisconnectHook>>>,
     /// 是否已主动关闭（关闭后不再触发断开回调）
     closed: Arc<AtomicBool>,
 }
@@ -49,10 +52,7 @@ impl Client {
 
     /// 注册断开回调（连接断开时触发；自动重连插件等使用）
     pub fn add_on_disconnect(&self, f: impl Fn(&Client) + Send + Sync + 'static) {
-        self.on_disconnect
-            .write()
-            .unwrap()
-            .push(Arc::new(f));
+        self.on_disconnect.write().unwrap().push(Arc::new(f));
     }
 
     /// 触发断开回调（接收循环结束时调用；主动关闭后不触发）
@@ -149,7 +149,7 @@ impl Client {
 pub struct ClientBuilder {
     router: Arc<Router>,
     timeout: std::time::Duration,
-    on_disconnect: Vec<Arc<dyn Fn(&Client) + Send + Sync>>,
+    on_disconnect: Vec<DisconnectHook>,
 }
 
 impl Default for ClientBuilder {

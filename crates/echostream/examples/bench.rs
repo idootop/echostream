@@ -1,5 +1,6 @@
-//! EchoStream 基准测试：RPC 延迟 / 并发吞吐 / 流吞吐
+//! EchoStream 基准测试：RPC 延迟 / 并发吞吐 / 事件 / 流吞吐（负载矩阵）
 //!
+//! 负载矩阵：短（64B）/ 中（4KiB）/ 长（256KiB）三种载荷
 //! 运行（release 模式）：`cargo run -p echostream --example bench --release`
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -57,74 +58,85 @@ async fn main() -> Result<()> {
 
     let client = ClientBuilder::new().connect("127.0.0.1:5999").await?;
 
-    // ===== 1. RPC 延迟（顺序 1 万次，64 字节载荷） =====
-    let payload = vec![0u8; 64];
+    // ===== 1. RPC 延迟（顺序，负载矩阵：64B / 4KiB / 256KiB） =====
     const N: u32 = 10_000;
-    let start = Instant::now();
-    for _ in 0..N {
-        let resp: Vec<u8> = client.request("echo64", &payload).await?;
-        debug_assert_eq!(resp.len(), 64);
+    for size in [64usize, 4 * 1024, 256 * 1024] {
+        let payload = vec![0u8; size];
+        let start = Instant::now();
+        for _ in 0..N {
+            let resp: Vec<u8> = client.request("echo64", &payload).await?;
+            debug_assert_eq!(resp.len(), size);
+        }
+        let elapsed = start.elapsed();
+        let per = elapsed.as_secs_f64() / N as f64 * 1e6;
+        println!("[bench] 顺序 RPC 延迟: {per:.1} µs/次（{N} 次，{size}B 载荷）");
     }
-    let elapsed = start.elapsed();
-    let per = elapsed.as_secs_f64() / N as f64 * 1e6;
-    println!("[bench] 顺序 RPC 延迟: {per:.1} µs/次（{N} 次，64B 载荷）");
 
-    // ===== 2. RPC 并发吞吐（100 并发 × 1000 次） =====
+    // ===== 2. RPC 并发吞吐（100 并发 × 1000 次，64B / 4KiB） =====
     const CONCURRENCY: usize = 100;
     const PER_TASK: u32 = 1000;
-    let start = Instant::now();
-    let mut tasks = Vec::new();
-    for _ in 0..CONCURRENCY {
-        let client = client.clone();
-        let payload = payload.clone();
-        tasks.push(tokio::spawn(async move {
-            for _ in 0..PER_TASK {
-                let _: Vec<u8> = client.request("echo64", &payload).await?;
-            }
-            Ok::<(), echostream::Error>(())
-        }));
+    for size in [64usize, 4 * 1024] {
+        let payload = vec![0u8; size];
+        let start = Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let client = client.clone();
+            let payload = payload.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..PER_TASK {
+                    let _: Vec<u8> = client.request("echo64", &payload).await?;
+                }
+                Ok::<(), echostream::Error>(())
+            }));
+        }
+        for t in tasks {
+            t.await.map_err(|e| Error::Io(e.to_string()))??;
+        }
+        let elapsed = start.elapsed();
+        let total = (CONCURRENCY as u64) * (PER_TASK as u64);
+        let qps = total as f64 / elapsed.as_secs_f64();
+        println!(
+            "[bench] 并发 RPC 吞吐: {qps:.0} req/s（{CONCURRENCY} 并发 × {PER_TASK}，{size}B 载荷）"
+        );
     }
-    for t in tasks {
-        t.await.map_err(|e| Error::Io(e.to_string()))??;
-    }
-    let elapsed = start.elapsed();
-    let total = (CONCURRENCY as u64) * (PER_TASK as u64);
-    let qps = total as f64 / elapsed.as_secs_f64();
-    println!("[bench] 并发 RPC 吞吐: {qps:.0} req/s（{CONCURRENCY} 并发 × {PER_TASK}，64B 载荷）");
 
-    // ===== 3. 事件吞吐（10 万事件） =====
+    // ===== 3. 事件吞吐（10 万事件，64B / 4KiB） =====
     const EVENTS: u64 = 100_000;
-    let start = Instant::now();
-    for _ in 0..EVENTS {
-        client.emit("bench_event", &payload).await?;
+    for size in [64usize, 4 * 1024] {
+        let payload = vec![0u8; size];
+        let start = Instant::now();
+        for _ in 0..EVENTS {
+            client.emit("bench_event", &payload).await?;
+        }
+        let elapsed = start.elapsed();
+        let eps = EVENTS as f64 / elapsed.as_secs_f64();
+        println!("[bench] 事件吞吐: {eps:.0} evt/s（{EVENTS} 事件，{size}B）");
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        println!(
+            "[bench] 服务端收到事件: {}",
+            EVENT_COUNT.load(Ordering::Relaxed)
+        );
     }
-    let elapsed = start.elapsed();
-    let eps = EVENTS as f64 / elapsed.as_secs_f64();
-    println!("[bench] 事件吞吐: {eps:.0} evt/s（{EVENTS} 事件，64B）");
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    println!(
-        "[bench] 服务端收到事件: {}",
-        EVENT_COUNT.load(Ordering::Relaxed)
-    );
 
-    // ===== 4. 不可靠事件吞吐（数据报通道，10 万事件） =====
-    static DGRAM_COUNT: AtomicU64 = AtomicU64::new(0);
-    let client2 = client.clone();
-    let _ = client2; // 占位（datagram 事件计数由服务端 handler 完成）
-    let start = Instant::now();
-    for _ in 0..EVENTS {
-        client
-            .emit_unreliable_raw("bench_event", Bytes::from(payload.clone()))
-            .await?;
+    // ===== 4. 不可靠事件吞吐（数据报通道，10 万事件，64B / 1KiB）
+    // 注意：数据报载荷上限 = 对端通告的 datagram_receive_buffer_size（4096） =====
+    for size in [64usize, 1024] {
+        let payload = vec![0u8; size];
+        let start = Instant::now();
+        for _ in 0..EVENTS {
+            client
+                .emit_unreliable_raw("bench_event", Bytes::from(payload.clone()))
+                .await?;
+        }
+        let elapsed = start.elapsed();
+        let dps = EVENTS as f64 / elapsed.as_secs_f64();
+        println!("[bench] 不可靠事件吞吐: {dps:.0} evt/s（{EVENTS} 事件，{size}B，数据报）");
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        println!(
+            "[bench] 服务端收到不可靠事件: {}",
+            EVENT_COUNT.load(Ordering::Relaxed) - EVENTS
+        );
     }
-    let elapsed = start.elapsed();
-    let dps = EVENTS as f64 / elapsed.as_secs_f64();
-    println!("[bench] 不可靠事件吞吐: {dps:.0} evt/s（{EVENTS} 事件，64B，数据报）");
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    println!(
-        "[bench] 服务端收到不可靠事件: {}",
-        EVENT_COUNT.load(Ordering::Relaxed) - EVENTS
-    );
 
     // ===== 5. 流吞吐（1MB × 200 帧 = 200MB） =====
     let mut stream = client.create_stream("bench_stream").await?;

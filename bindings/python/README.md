@@ -54,3 +54,15 @@ client.close()
 ```bash
 python tests/test_e2e.py   # server + client 进程内闭环
 ```
+
+## 示例
+
+两个进程演示完整链路（先开服务端，再开客户端）：
+
+```bash
+# 终端 1：服务端（监听 127.0.0.1:5102，Ctrl+C 优雅退出）
+python3 examples/server.py
+
+# 终端 2：客户端（调用 add、发送事件、推送流后退出）
+python3 examples/client.py
+```

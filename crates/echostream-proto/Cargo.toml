@@ -17,3 +17,6 @@ thiserror = { workspace = true }
 bytes = { workspace = true }
 postcard = { workspace = true }
 async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

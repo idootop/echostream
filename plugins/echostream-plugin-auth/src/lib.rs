@@ -35,7 +35,9 @@ pub struct AuthPlugin {
 impl AuthPlugin {
     /// 创建认证插件
     pub fn new(token: impl Into<String>) -> Self {
-        Self { token: token.into() }
+        Self {
+            token: token.into(),
+        }
     }
 }
 
@@ -115,12 +117,14 @@ impl Middleware for AuthMiddleware {
 }
 
 /// 客户端辅助：发送认证事件
-pub async fn authenticate(
-    session: &Session,
-    token: impl Into<String>,
-) -> Result<()> {
+pub async fn authenticate(session: &Session, token: impl Into<String>) -> Result<()> {
     let token = token.into();
     session
-        .emit_raw(AUTH_EVENT, Bytes::from(postcard::to_allocvec(&token).map_err(|e| Error::Serialization(e.to_string()))?))
+        .emit_raw(
+            AUTH_EVENT,
+            Bytes::from(
+                postcard::to_allocvec(&token).map_err(|e| Error::Serialization(e.to_string()))?,
+            ),
+        )
         .await
 }

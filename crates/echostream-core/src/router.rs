@@ -121,6 +121,8 @@ impl Router {
             Err(e) => ResponseMsg {
                 id: msg.id,
                 code: match &e {
+                    // 业务错误码透传
+                    Error::Rpc(code, _) => StatusCode::new(*code),
                     Error::HandlerNotFound(_) => StatusCode::NOT_FOUND,
                     Error::Timeout(_) => StatusCode::TIMEOUT,
                     _ => StatusCode::ERROR,

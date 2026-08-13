@@ -63,3 +63,15 @@ client.close();
 node test/index.test.cjs    # client 端到端（需 chat_server 示例）
 node test/server.test.cjs   # server + client 进程内闭环
 ```
+
+## 示例
+
+两个进程演示完整链路（先开服务端，再开客户端）：
+
+```bash
+# 终端 1：服务端（监听 127.0.0.1:5101，Ctrl+C 优雅退出）
+node examples/server.cjs
+
+# 终端 2：客户端（调用 add、发送事件、推送流后退出）
+node examples/client.cjs
+```

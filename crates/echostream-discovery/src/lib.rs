@@ -13,7 +13,9 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use echostream_proto::{Error, Result};
-use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo as MdnsInfo, TxtProperties};
+use mdns_sd::{
+    ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo as MdnsInfo, TxtProperties,
+};
 
 /// mDNS 服务类型（QUIC 基于 UDP）
 const SERVICE_TYPE: &str = "_echostream._udp.local.";

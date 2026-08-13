@@ -24,8 +24,12 @@ jobs:
         run: cargo clippy --all-features -- -D warnings
       - name: Build
         run: cargo build
+      - name: 单元与集成测试（proto 编解码 + core 框架）
+        run: cargo test -p echostream-proto -p echostream-core
       - name: 示例冒烟（RPC/Event/Stream 端到端）
         run: cargo run -p echostream --example simple_rpc
+      - name: 插件栈冒烟（认证/重连/日志）
+        run: cargo run -p echostream --example plugin_stack
 
   wasm:
     name: WASM 编解码与状态机验证
@@ -46,9 +50,9 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.106 --locked
           wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
       - name: 编解码交叉验证
-        run: node sdk/web/echostream.test.mjs
+        run: node bindings/web/echostream.test.mjs
       - name: 客户端状态机验证
-        run: node sdk/web/client_core.test.mjs
+        run: node bindings/web/client_core.test.mjs
 
   bindings:
     name: Node.js binding 端到端

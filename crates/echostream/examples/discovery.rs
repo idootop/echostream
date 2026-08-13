@@ -51,7 +51,10 @@ async fn main() -> Result<()> {
             svc.name, svc.addr, svc.metadata
         );
     }
-    assert_eq!(found[0].metadata.get("version").map(String::as_str), Some("0.1.0"));
+    assert_eq!(
+        found[0].metadata.get("version").map(String::as_str),
+        Some("0.1.0")
+    );
 
     let client = ClientBuilder::new().connect(found[0].addr).await?;
     let sum: i64 = client.request("add", &(40, 2)).await?;
