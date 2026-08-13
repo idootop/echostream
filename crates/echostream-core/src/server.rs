@@ -176,6 +176,12 @@ impl ServerBuilder {
         self
     }
 
+    /// 使用现有的上下文（供各语言绑定层共享会话与状态）
+    pub fn with_ctx(mut self, ctx: Arc<ServerContext>) -> Self {
+        self.ctx = ctx;
+        self
+    }
+
     /// 注册 RPC 处理器
     pub fn add_rpc<H: DynRpcHandler>(self, handler: H) -> Self {
         self.router.add_rpc(handler);

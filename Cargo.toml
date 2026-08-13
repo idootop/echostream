@@ -9,6 +9,7 @@ members = [
     "crates/echostream-web",
     "bindings/node",
     "bindings/wasm",
+    "bindings/python",
 ]
 resolver = "2"
 
@@ -33,7 +34,7 @@ echostream-derive = { path = "crates/echostream-derive", version = "0.1.0" }
 echostream-discovery = { path = "crates/echostream-discovery", version = "0.1.0" }
 
 # External dependencies
-quinn = "0.11.11"
+quinn = { version = "0.11.11", default-features = false, features = ["rustls-ring", "log", "runtime-tokio"] }
 tokio = { version = "1.53.1", features = ["full"] }
 postcard = { version = "1.1.3", features = ["use-std"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -46,7 +47,7 @@ anyhow = "1.0.104"
 mdns-sd = "0.21.0"
 
 # TLS / QUIC 证书
-rustls = { version = "0.23.43", features = ["ring"] }
+rustls = { version = "0.23.43", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pki-types = "1.15.1"
 rcgen = "0.14.9"
 

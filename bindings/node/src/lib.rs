@@ -95,14 +95,12 @@ struct JsEventCallback {
 }
 
 #[async_trait::async_trait]
-impl EventHandler for JsEventCallback {
-    type Data = Bytes;
-
+impl DynEventHandler for JsEventCallback {
     fn name(&self) -> &str {
         &self.name
     }
 
-    async fn handle(&self, _session: &Session, data: Bytes) -> echostream::Result<()> {
+    async fn handle_encoded(&self, _session: &Session, data: Bytes) -> echostream::Result<()> {
         self.callback
             .call_async::<()>(Ok(data.to_vec()))
             .await
@@ -294,6 +292,12 @@ pub struct JsServerBuilder {
     addr: Option<String>,
 }
 
+impl Default for JsServerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[napi]
 impl JsServerBuilder {
     /// 创建构建器
@@ -333,6 +337,7 @@ impl JsServerBuilder {
             .ok_or_else(|| napi::Error::from_reason("未指定监听地址"))?;
         let server = ServerBuilder::new()
             .with_router(self.router.clone())
+            .with_ctx(self.ctx.clone())
             .bind(addr)
             .build()
             .await

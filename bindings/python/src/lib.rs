@@ -1,0 +1,370 @@
+//! EchoStream Python binding（PyO3）
+//!
+//! 完整暴露 client + server 能力（与 Rust 核心同一份实现）：
+//! - 客户端：`connect` / `Client`（request / emit / create_stream / on_event / close）
+//! - 服务端：`ServerBuilder` / `Server`（run / shutdown / broadcast / sessions）
+//! - 会话：`Session`（服务端主动调用客户端）
+//!
+//! 载荷约定：所有 RPC / Event / Stream 载荷为 postcard 编码字节（`bytes`），
+//! 与 Rust 侧线缆格式一致。
+//!
+//! 同步 API：内部使用 tokio runtime（`block_on`）；事件回调为同步 Python 函数。
+
+use std::sync::{Arc, OnceLock};
+
+use bytes::Bytes;
+use echostream::prelude::*;
+use pyo3::conversion::IntoPyObjectExt;
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyList};
+
+// ======================== 运行时 ========================
+
+/// 全局 tokio runtime（同步 API 内部使用）
+fn runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("创建 tokio runtime 失败")
+    })
+}
+
+fn to_py_err(e: Error) -> PyErr {
+    PyRuntimeError::new_err(e.to_string())
+}
+
+fn block_on<F: std::future::Future>(f: F) -> Result<F::Output> {
+    Ok(runtime().block_on(f))
+}
+
+// ======================== 客户端 ========================
+
+/// 连接服务端（QUIC）
+#[pyfunction]
+pub fn connect(py: Python<'_>, url: &str) -> PyResult<Client> {
+    let client = py
+        .detach(|| block_on(ClientBuilder::new().connect(url)))
+        .map_err(to_py_err)?
+        .map_err(to_py_err)?;
+    Ok(Client {
+        client: Arc::new(client),
+    })
+}
+
+/// EchoStream 客户端
+#[pyclass]
+pub struct Client {
+    client: Arc<::echostream::Client>,
+}
+
+#[pymethods]
+impl Client {
+    /// 发起 RPC 请求，返回响应载荷（postcard 字节）
+    fn request(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<Py<PyAny>> {
+        let data = Bytes::copy_from_slice(payload);
+        let resp: Bytes = py
+            .detach(|| block_on(self.client.request_raw(name, data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)?;
+        Ok(PyBytes::new(py, &resp).into())
+    }
+
+    /// 发送单向事件
+    fn emit(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<()> {
+        let data = Bytes::copy_from_slice(payload);
+        py.detach(|| block_on(self.client.emit_raw(name, data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
+    /// 创建流（推送连续数据）
+    fn create_stream(&self, py: Python<'_>, name: &str) -> PyResult<Stream> {
+        let stream = py
+            .detach(|| block_on(self.client.create_stream(name)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)?;
+        Ok(Stream {
+            inner: tokio::sync::Mutex::new(stream),
+        })
+    }
+
+    /// 注册事件监听（回调签名：`handler(data: bytes) -> None`）
+    fn on_event(&self, name: &str, callback: Py<PyAny>) {
+        self.client
+            .add_event_handler(PyEventHandler::new(name, callback));
+    }
+
+    /// 注册 RPC 处理器（处理服务端主动调用，回调签名：`handler(data: bytes) -> bytes`）
+    fn add_rpc(&self, name: &str, callback: Py<PyAny>) {
+        self.client
+            .add_rpc_handler(PyRpcHandler::new(name, callback));
+    }
+
+    /// 关闭连接
+    fn close(&self) {
+        self.client.close();
+    }
+}
+
+/// 流发送器
+#[pyclass]
+pub struct Stream {
+    inner: tokio::sync::Mutex<StreamSender>,
+}
+
+#[pymethods]
+impl Stream {
+    /// 发送一帧
+    fn send(&self, py: Python<'_>, payload: &[u8]) -> PyResult<()> {
+        let mut stream = py.detach(|| runtime().block_on(self.inner.lock()));
+        py.detach(|| block_on(stream.send(Bytes::copy_from_slice(payload))))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
+    /// 关闭流
+    fn finish(&self, py: Python<'_>) -> PyResult<()> {
+        let mut stream = py.detach(|| runtime().block_on(self.inner.lock()));
+        py.detach(|| block_on(stream.finish()))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+}
+
+// ======================== 事件回调 ========================
+
+/// Python 函数 → EventHandler 适配
+struct PyEventHandler {
+    name: String,
+    callback: Py<PyAny>,
+}
+
+impl PyEventHandler {
+    fn new(name: &str, callback: Py<PyAny>) -> Self {
+        Self {
+            name: name.to_string(),
+            callback,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl DynEventHandler for PyEventHandler {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn handle_encoded(&self, _session: &::echostream::Session, data: Bytes) -> Result<()> {
+        Python::attach(|py| {
+            let args = (PyBytes::new(py, &data),);
+            self.callback
+                .call1(py, args)
+                .map_err(|e| Error::Io(e.to_string()))?;
+            Ok(())
+        })
+    }
+}
+
+// ======================== 服务端 ========================
+
+/// 服务端（Python 侧句柄）
+#[pyclass]
+pub struct Server {
+    server: ::echostream::Server,
+    ctx: Arc<ServerContext>,
+}
+
+#[pymethods]
+impl Server {
+    /// 运行服务（阻塞直到 `shutdown`；请在其他线程调用 shutdown）
+    fn run(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| block_on(self.server.run()))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
+    /// 优雅关闭
+    fn shutdown(&self) {
+        self.server.shutdown();
+    }
+
+    /// 本地监听地址
+    fn addr(&self) -> Option<String> {
+        self.server.endpoint_addr().map(|a| a.to_string())
+    }
+
+    /// 广播事件到所有连接客户端
+    fn broadcast(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<()> {
+        let data = Bytes::copy_from_slice(payload);
+        py.detach(|| block_on(self.ctx.broadcast(name, &data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
+    /// 所有在线会话（可主动调用客户端）
+    fn sessions(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let sessions = self
+            .ctx
+            .sessions()
+            .into_iter()
+            .map(|s| Session { session: s }.into_py_any(py).unwrap())
+            .collect::<Vec<_>>();
+        Ok(PyList::new(py, sessions)?.into())
+    }
+}
+
+/// 会话（服务端视角）
+#[pyclass]
+pub struct Session {
+    session: ::echostream::Session,
+}
+
+#[pymethods]
+impl Session {
+    /// 会话 ID
+    fn id(&self) -> u64 {
+        self.session.id()
+    }
+
+    /// 对端地址
+    fn peer_addr(&self) -> String {
+        self.session.peer_addr().to_string()
+    }
+
+    /// 主动调用客户端 RPC
+    fn request(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<Py<PyAny>> {
+        let data = Bytes::copy_from_slice(payload);
+        let resp: Bytes = py
+            .detach(|| block_on(self.session.request_raw(name, data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)?;
+        Ok(PyBytes::new(py, &resp).into())
+    }
+
+    /// 向客户端发送事件
+    fn emit(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<()> {
+        let data = Bytes::copy_from_slice(payload);
+        py.detach(|| block_on(self.session.emit_raw(name, data)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)
+    }
+
+    /// 关闭连接
+    fn close(&self) {
+        self.session.close();
+    }
+}
+
+/// 服务端构建器
+#[pyclass]
+pub struct ServerBuilder {
+    router: Arc<Router>,
+    ctx: Arc<ServerContext>,
+    addr: Option<String>,
+}
+
+#[pymethods]
+impl ServerBuilder {
+    #[new]
+    fn new() -> Self {
+        Self {
+            router: Arc::new(Router::default()),
+            ctx: Arc::new(ServerContext::new()),
+            addr: None,
+        }
+    }
+
+    /// 绑定监听地址
+    fn bind(&mut self, addr: &str) {
+        self.addr = Some(addr.to_string());
+    }
+
+    /// 注册 RPC 处理器（回调签名：`handler(data: bytes) -> bytes`）
+    fn add_rpc(&self, name: &str, callback: Py<PyAny>) {
+        self.router.add_rpc(PyRpcHandler::new(name, callback));
+    }
+
+    /// 注册事件处理器（回调签名：`handler(data: bytes) -> None`）
+    fn add_event(&self, name: &str, callback: Py<PyAny>) {
+        self.router.add_event(PyEventHandler::new(name, callback));
+    }
+
+    /// 构建服务端
+    fn build(&self) -> PyResult<Server> {
+        let addr = self
+            .addr
+            .clone()
+            .ok_or_else(|| PyRuntimeError::new_err("未指定监听地址"))?;
+        let server = block_on(
+            ::echostream::ServerBuilder::new()
+                .with_router(self.router.clone())
+                .with_ctx(self.ctx.clone())
+                .bind(addr)
+                .build(),
+        )
+        .map_err(to_py_err)?
+        .map_err(to_py_err)?;
+        Ok(Server {
+            server,
+            ctx: self.ctx.clone(),
+        })
+    }
+}
+
+/// Python 函数 → RPC 处理器适配
+struct PyRpcHandler {
+    name: String,
+    callback: Py<PyAny>,
+}
+
+impl PyRpcHandler {
+    fn new(name: &str, callback: Py<PyAny>) -> Self {
+        Self {
+            name: name.to_string(),
+            callback,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl DynRpcHandler for PyRpcHandler {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn handle_encoded(
+        &self,
+        _session: &::echostream::Session,
+        payload: Bytes,
+    ) -> Result<Bytes> {
+        Python::attach(|py| {
+            let args = (PyBytes::new(py, &payload),);
+            let resp = self
+                .callback
+                .call1(py, args)
+                .map_err(|e| Error::Io(e.to_string()))?;
+            let bytes = resp
+                .extract::<Vec<u8>>(py)
+                .map_err(|e| Error::Io(e.to_string()))?;
+            Ok(Bytes::from(bytes))
+        })
+    }
+}
+
+// ======================== 模块注册 ========================
+
+#[pymodule]
+#[pyo3(name = "echostream")]
+fn echostream_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(connect, m)?)?;
+    m.add_class::<Client>()?;
+    m.add_class::<Stream>()?;
+    m.add_class::<Server>()?;
+    m.add_class::<Session>()?;
+    m.add_class::<ServerBuilder>()?;
+    Ok(())
+}
