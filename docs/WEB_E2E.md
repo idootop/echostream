@@ -1,43 +1,62 @@
 # Web 端浏览器联调（E2E）
 
-## 状态
+## 验证覆盖现状
 
-- ✅ 已验证：WebTransport 服务端（wtransport 客户端端到端）、WASM 编解码与状态机（交叉验证）、
-  JS SDK 网络层逻辑
-- ⚠️ 浏览器自动化（Playwright）证书信任：**环境限制** —— Chrome/Chromium 的 WebTransport（QUIC）
-  证书校验不遵循 `--ignore-certificate-errors` / `ignoreHTTPSErrors` / `--ignore-certificate-errors-spki-list`
-  等常规信任机制（已逐一实验确认，含 CA 签发 + serverAuth EKU + 7 天有效期证书 +
-  W3C `serverCertificateHashes` API）。服务端确认收到 Chrome 的 QUIC 连接，拒绝发生在 TLS 证书层。
+- ✅ WebTransport 服务端逻辑：wtransport 客户端端到端（RPC/事件/流全链路）
+- ✅ 协议编解码：WASM 交叉验证（与 Rust 基准字节一致）
+- ✅ 客户端状态机：RPC 匹配 / 事件路由 / 主动调用 / 流序号（6 项断言）
+- ⚠️ 真实浏览器自动化：受各浏览器证书/协议策略限制（详见下）
 
-## 手动验证步骤（推荐）
+## 浏览器兼容性调研结论（2026-08，本机 macOS 15.7）
 
-1. 启动服务端：`cargo run -p echostream-web --example web_chat_server --release`
-2. Chrome 访问 `https://127.0.0.1:4433`，点击"高级 → 继续访问"信任自签名证书
-3. 打开 `http://127.0.0.1:8080/e2e.html`（或 `sdk/web/index.html`，需静态服务）：
-   `python3 -m http.server 8080 --directory sdk/web`
-4. 页面自动执行 RPC / 事件 / 流，控制台可见结果
+| 浏览器 | WebTransport | 私有 CA 证书 | 结论 |
+|--------|-------------|-------------|------|
+| Chrome/Chromium | ✅ | ❌ QUIC 证书校验不遵循任何自动化信任机制（`--ignore-certificate-errors`、`spki-list`、`allow-insecure-localhost`、`serverCertificateHashes`、CA 方案 8 种组合逐一失败；服务端确认收到 QUIC 连接，拒绝发生在 TLS 证书层） | 需公网可信证书 |
+| Firefox | ✅ | ❌ HTTP/3 证书验证强制要求 CA/Browser Forum 公网 CA；导入私有 CA + `disable_when_third_party_roots_found` 两个取值均失败（TCP HTTPS 同证书验证通过，确认是 HTTP/3 特有策略） | 需公网可信证书 |
+| Safari | 26.4+ | ✅ 系统钥匙串信任 | 本机 26.3 未支持（需升级系统） |
+| WebKit（Playwright） | ❌ 构建无 WebTransport | — | 不可用 |
+
+服务端侧关键证据：Firefox 连接时 quinn TRACE 显示握手正常推进至 Handshake 阶段
+（收到 ClientHello → 发送 ServerHello+证书 → 收到客户端 Handshake 包），随后客户端
+发送 TLS alert 42（handshake_failure）中止 —— 证书验证在 QUIC 路径被拒。
+
+## 推荐路径
+
+### 方案 A：公网穿透 + 公网证书（完整自动化，需 VPS 或付费穿透）
+
+1. 准备：公网服务器（或支持 UDP 的穿透服务如 ngrok 付费层 / frp）+ 域名
+2. 域名解析到公网 IP，Let's Encrypt 签发证书（`certbot certonly --standalone`）
+3. 本地启动 `web_chat_server` 加载公网证书（`ECHO_CERT`/`ECHO_KEY` 环境变量已支持）
+4. UDP 端口转发到本地（frp UDP 模式 / ngrok TCP+UDP 等）
+5. 运行 `tools/e2e/e2e.mjs`（URL 改为公网域名）—— 此时浏览器走标准公网 PKI，应直接通过
+
+### 方案 B：Safari 手动验证（免费，需 macOS 26.4+）
+
+1. 生成 CA 并签发证书：`tools/e2e/e2e-firefox.mjs` 中的 openssl 步骤（或 `target/e2e-ca/` 已有）
+2. 导入 CA 到钥匙串：`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db target/e2e-ca/ca.pem`
+3. 启动服务端：`cargo run -p echostream-web --example web_chat_server --release`（默认自签）或加载 CA 证书
+4. Safari 打开 `http://127.0.0.1:8080/e2e.html`（`python3 -m http.server 8080 --directory sdk/web`）
+5. 页面自动执行 RPC / 事件 / 流，控制台可见结果
+
+### 方案 C：Chrome 手动验证（任何版本）
+
+1. 启动服务端，Chrome 访问 `https://127.0.0.1:4433` 点击"高级 → 继续访问"信任证书
+2. 打开 `http://127.0.0.1:8080/e2e.html`（同上）
+3. 页面自动执行并输出结果
 
 ## 自动化脚本
 
-`tools/e2e/e2e.mjs`（Playwright + Chromium）已实现完整流程（启动服务端 → 生成 CA 证书 →
-注入 hash → 页面执行断言），在证书信任机制生效的环境中可直接运行：
-
-```bash
-node tools/e2e/e2e.mjs
-```
+- `tools/e2e/e2e.mjs`：Playwright Chromium（公网证书环境可用）
+- `tools/e2e/e2e-firefox.mjs`：Playwright Firefox（私有 CA + pref 方案，结论：受 HTTP/3 公网 CA 策略限制）
 
 ## 排查记录（避免重复踩坑）
 
 | 方案 | 结果 |
 |------|------|
-| `--ignore-certificate-errors` | ✗ |
-| `ignoreHTTPSErrors: true`（Playwright） | ✗（不覆盖 QUIC） |
-| `--ignore-certificate-errors-spki-list`（叶子/CA） | ✗ |
-| `--allow-insecure-localhost` | ✗ |
-| `--origin-to-force-quic-on` + 新 profile | ✗ |
-| CA 签发证书（serverAuth EKU，7 天） | ✗ |
-| W3C `serverCertificateHashes`（Uint8Array/ArrayBuffer，DER hash 与 openssl 一致） | ✗ |
-| 系统 Chrome（非 Playwright 构建） | ✗ |
-
-关键证据：服务端日志 `New incoming QUIC connection` 后 Chrome 主动中止
-（`certificate unknown, CERTIFICATE_VERIFY_FAILED`）—— 传输正常，证书策略拒绝。
+| Chrome：`--ignore-certificate-errors` / `ignoreHTTPSErrors` / `spki-list`（叶子/CA）/ `allow-insecure-localhost` / `origin-to-force-quic-on` + 新 profile / 三件套组合 | ✗ |
+| Chrome：W3C `serverCertificateHashes`（DER hash 与 openssl 一致，Uint8Array/ArrayBuffer，合规证书 7 天 + serverAuth EKU） | ✗ |
+| Firefox：导入私有 CA（certutil，TCP HTTPS 验证通过）+ `disable_when_third_party_roots_found` 设 false/true | ✗（HTTP/3 强制公网 CA） |
+| WebKit（Playwright 26.5）：`typeof WebTransport` 为 undefined | ✗ |
+| 系统 Safari 26.3：WebTransport 需 26.4 | ✗（版本不足） |
+| curl --http3：libcurl 构建不支持 | ✗（本机） |
+| 公网对照（webtransport.day）：本机代理环境 UDP 被阻断 | ✗（网络环境） |

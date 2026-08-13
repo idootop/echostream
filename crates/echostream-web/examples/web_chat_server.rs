@@ -36,7 +36,7 @@ async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::TRACE)
         .with_target(false)
         .init();
     // 证书：优先用环境变量指定（E2E 的 CA 签发证书），否则自签名（7 天有效期）
