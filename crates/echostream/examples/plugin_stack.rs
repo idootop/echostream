@@ -7,12 +7,14 @@
 //!
 //! 运行：`cargo run -p echostream --example plugin_stack`
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use echostream::prelude::*;
 use echostream_middleware_logging::LoggingMiddleware;
 use echostream_plugin_auth::{AuthPlugin, authenticate};
 use echostream_plugin_reconnect::ReconnectPlugin;
+use echostream_plugin_retry::{RetryPolicy, request_with_retry};
 
 const ADDR: &str = "127.0.0.1:5100";
 const TOKEN: &str = "my-secret-token";
@@ -42,12 +44,15 @@ async fn run_server() -> Result<Server> {
 // ======================== 客户端 ========================
 
 async fn run_client() -> Result<()> {
+    // 断线标志：服务端重启后由断开回调置位
+    static DISCONNECTED: AtomicBool = AtomicBool::new(false);
     let client = ClientBuilder::new()
         .timeout(Duration::from_secs(2))
         // 自动重连：断线后指数退避重连
         .plugin(ReconnectPlugin::new(ADDR).base_delay(Duration::from_millis(200)))
         // 重连成功后自动重新认证
         .on_disconnect(|c: &Client| {
+            DISCONNECTED.store(true, Ordering::Relaxed);
             let c = c.clone();
             tokio::spawn(async move {
                 loop {
@@ -74,22 +79,26 @@ async fn run_client() -> Result<()> {
     assert_eq!(sum, 30);
     println!("[client] 认证后 add(10, 20) = {sum} ✓");
 
-    // 等待服务端重启（main 在 4.5s 时重启，重连插件自动恢复连接）
-    tokio::time::sleep(Duration::from_millis(4700)).await;
-
     // 3. 服务端重启 → 自动重连 + 重新认证
-    let reconnected = {
-        let mut ok = false;
-        for _ in 0..50 {
-            if client.request::<_, i64>("add", &(3, 4)).await.is_ok() {
-                ok = true;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+    // 等待断线发生（main 在 4.5s 时重启服务端）
+    for _ in 0..100 {
+        if DISCONNECTED.load(Ordering::Relaxed) {
+            break;
         }
-        ok
-    };
-    assert!(reconnected, "自动重连失败");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(DISCONNECTED.load(Ordering::Relaxed), "未检测到断线");
+    // 断线后立即发起请求：第一次必然失败，retry 插件自动重试
+    // 直到重连 + 重新认证完成
+    let sum: i64 = request_with_retry(
+        &client,
+        "add",
+        &(3, 4),
+        &RetryPolicy::new(50, Duration::from_millis(200)),
+    )
+    .await
+    .expect("自动重连失败");
+    assert_eq!(sum, 7);
     let sum: i64 = client.request("add", &(5, 6)).await?;
     assert_eq!(sum, 11);
     println!("[client] 自动重连 + 重新认证成功，add(5, 6) = {sum} ✓");
@@ -128,7 +137,7 @@ async fn main() -> Result<()> {
 
     // 客户端完成前两步后，重启服务端（模拟故障）
     // 注：未认证消息有 2s 认证等待窗口，第 1 步约在 t=2s 完成
-    tokio::time::sleep(Duration::from_millis(4500)).await;
+    tokio::time::sleep(Duration::from_millis(4800)).await;
     println!("[main] 重启服务端...");
     server.shutdown();
     let _ = server_task.await;

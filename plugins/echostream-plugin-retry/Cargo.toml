@@ -1,0 +1,13 @@
+[package]
+name = "echostream-plugin-retry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream RPC 重试插件：请求失败自动重试（可配置策略）"
+
+[dependencies]
+echostream-core = { workspace = true }
+echostream-proto = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }

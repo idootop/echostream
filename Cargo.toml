@@ -11,6 +11,7 @@ members = [
     "crates/echostream-ws",
     "plugins/echostream-plugin-auth",
     "plugins/echostream-plugin-reconnect",
+    "plugins/echostream-plugin-retry",
     "middlewares/echostream-middleware-logging",
     "bindings/node",
     "bindings/wasm",

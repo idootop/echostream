@@ -294,6 +294,7 @@ dependencies = [
  "echostream-middleware-logging",
  "echostream-plugin-auth",
  "echostream-plugin-reconnect",
+ "echostream-plugin-retry",
  "echostream-proto",
  "postcard",
  "serde",
@@ -391,6 +392,17 @@ dependencies = [
  "echostream-core",
  "echostream-proto",
  "echostream-transport",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echostream-plugin-retry"
+version = "0.1.0"
+dependencies = [
+ "echostream-core",
+ "echostream-proto",
+ "serde",
  "tokio",
  "tracing",
 ]

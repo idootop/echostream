@@ -1,0 +1,3 @@
+[client] 已连接 127.0.0.1:5113
+add(10, 20) = 30
+E2E_CLIENT_DONE
