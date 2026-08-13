@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>EchoStream Web Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+    button { padding: 6px 14px; margin: 4px; }
+    #log { background: #f5f5f5; padding: 12px; border-radius: 8px; min-height: 200px; font-family: monospace; font-size: 13px; }
+    input { padding: 6px; width: 120px; }
+  </style>
+</head>
+<body>
+  <h1>EchoStream Web Demo</h1>
+  <p>先运行服务端：<code>cargo run -p echostream-web --example web_server</code>，
+     然后 Chrome 访问 <code>https://127.0.0.1:4433</code> 信任自签名证书，再刷新本页。</p>
+
+  <button id="connect">连接</button>
+  <button id="add">RPC add(10, 20)</button>
+  <button id="emit">发送事件 hello</button>
+  <button id="stream">推送流 chat ×3</button>
+  <div id="log">等待操作...</div>
+
+  <script type="module">
+    import { EchoStream } from "./echostream.js";
+
+    const log = (msg) => {
+      const el = document.getElementById("log");
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + el.textContent;
+    };
+
+    let client = null;
+
+    document.getElementById("connect").onclick = async () => {
+      try {
+        client = new EchoStream("https://127.0.0.1:4433");
+        client.onEvent("hello", (data, msg) => log(`收到事件 hello: ${new TextDecoder().decode(data)}`));
+        await client.connect();
+        log("✅ 已连接 WebTransport");
+      } catch (e) {
+        log(`❌ 连接失败: ${e}`);
+      }
+    };
+
+    document.getElementById("add").onclick = async () => {
+      try {
+        const data = await client.request("add", [10, 20], { decode: "bytes" });
+        const [a, b] = [new DataView(data.buffer).getUint8(0), new DataView(data.buffer).getUint8(1)];
+        log(`✅ add(10, 20) 响应字节: ${Array.from(data).join(",")}（u64 30 的 varint）`);
+      } catch (e) {
+        log(`❌ RPC 失败: ${e}`);
+      }
+    };
+
+    document.getElementById("emit").onclick = async () => {
+      try {
+        await client.emit("hello", "from browser 👋");
+        log("✅ 已发送事件 hello");
+      } catch (e) {
+        log(`❌ 发送失败: ${e}`);
+      }
+    };
+
+    document.getElementById("stream").onclick = async () => {
+      try {
+        const stream = await client.createStream("chat");
+        for (let i = 0; i < 3; i++) {
+          await stream.send(`browser frame ${i}`);
+        }
+        await stream.finish();
+        log("✅ 已推送 3 帧流数据");
+      } catch (e) {
+        log(`❌ 流发送失败: ${e}`);
+      }
+    };
+  </script>
+</body>
+</html>

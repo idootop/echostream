@@ -313,6 +313,7 @@ dependencies = [
  "echostream-derive",
  "echostream-discovery",
  "echostream-proto",
+ "postcard",
  "serde",
  "tokio",
  "tracing",
