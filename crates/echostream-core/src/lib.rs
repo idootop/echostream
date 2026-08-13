@@ -23,9 +23,10 @@ pub mod stream;
 
 pub use client::{Client, ClientBuilder};
 pub use context::ServerContext;
-pub use handler::{EventHandler, RpcHandler, StreamHandler};
+pub use handler::{DynEventHandler, DynRpcHandler, EventHandler, RpcHandler, StreamHandler};
 pub use middleware::Middleware;
 pub use plugin::ServerPlugin;
+pub use router::Router;
 pub use server::{Server, ServerBuilder};
 pub use session::Session;
 pub use stream::{StreamReceiver, StreamSender};

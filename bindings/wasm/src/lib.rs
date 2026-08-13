@@ -143,7 +143,7 @@ impl Writer {
             if n >= 0 {
                 self.varint(n as u64);
             } else {
-                self.varint(((-n) as i128 * 2 - 1) as u64);
+                self.varint(((-n) * 2 - 1) as u64);
             }
             return Ok(());
         }
@@ -232,32 +232,30 @@ fn js_to_message(v: &JsValue) -> Result<Message, JsValue> {
     let obj = Object::from(v.clone());
     let ty = get_str(&obj, "type")?;
     let id = get_u64(&obj, "id")?;
-    let name = get_str(&obj, "name")?;
-    let data = get_bytes(&obj, "data")?;
     match ty.as_str() {
-        "request" => Ok(Message::Request(RequestMsg { id, name, data })),
-        "response" => {
-            let code = get_u64(&obj, "code")? as u16;
-            let message = get_opt_str(&obj, "message")?;
-            Ok(Message::Response(ResponseMsg {
-                id,
-                code: StatusCode(code),
-                message,
-                data,
-            }))
-        }
-        "event" => Ok(Message::Event(EventMsg { id, name, data })),
-        "stream" => {
-            let seq = get_u64(&obj, "seq")?;
-            let sender_ts = get_u64(&obj, "senderTs")?;
-            Ok(Message::Stream(StreamMsg {
-                id,
-                name,
-                seq,
-                sender_ts: Timestamp(sender_ts),
-                data,
-            }))
-        }
+        "request" => Ok(Message::Request(RequestMsg {
+            id,
+            name: get_str(&obj, "name")?,
+            data: get_bytes(&obj, "data")?,
+        })),
+        "response" => Ok(Message::Response(ResponseMsg {
+            id,
+            code: StatusCode(get_u64(&obj, "code")? as u16),
+            message: get_opt_str(&obj, "message")?,
+            data: get_bytes(&obj, "data")?,
+        })),
+        "event" => Ok(Message::Event(EventMsg {
+            id,
+            name: get_str(&obj, "name")?,
+            data: get_bytes(&obj, "data")?,
+        })),
+        "stream" => Ok(Message::Stream(StreamMsg {
+            id,
+            name: get_str(&obj, "name")?,
+            seq: get_u64(&obj, "seq")?,
+            sender_ts: Timestamp(get_u64(&obj, "senderTs")?),
+            data: get_bytes(&obj, "data")?,
+        })),
         other => Err(js_err(&format!("未知消息类型: {other}"))),
     }
 }
@@ -325,10 +323,11 @@ fn get_str(obj: &Object, key: &str) -> Result<String, JsValue> {
 fn get_u64(obj: &Object, key: &str) -> Result<u64, JsValue> {
     let v = Reflect::get(obj, &key.into())
         .map_err(|e| js_err(&format!("字段 {key} 读取失败: {e:?}")))?;
-    if let Some(n) = v.as_f64() {
-        if n.is_finite() && n >= 0.0 {
-            return Ok(n as u64);
-        }
+    if let Some(n) = v.as_f64()
+        && n.is_finite()
+        && n >= 0.0
+    {
+        return Ok(n as u64);
     }
     if v.is_bigint() {
         let big = BigInt::from(v);

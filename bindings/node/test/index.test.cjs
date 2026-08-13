@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "../../..");
 const wasm = require(path.join(root, "bindings/wasm/node/echostream_wasm.js"));
-const { connect } = require("../echostream-node.node");
+const { connect } = require("../index.js");
 
 const encode = wasm.encode_payload;
 const decodeU64 = wasm.decode_u64;
