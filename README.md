@@ -100,7 +100,7 @@ let client = ClientBuilder::new().connect(addrs[0]).await?;
 | **Rust** | crates.io（`echostream`） | 完整 client + server |
 | **Node.js** | npm（`echostream-node`，napi-rs） | 完整 client + server，error-first 回调 + Promise |
 | **Python** | PyPI（`echostream`，PyO3） | 完整 client + server，同步 API |
-| **Web** | `sdk/web`（WebTransport） | 浏览器 client：JS 仅网络层，编解码 + 状态机由 Rust WASM 提供 |
+| **Web** | `bindings/web`（WebSocket / WebTransport 双传输） | 浏览器 client：JS 仅网络层，编解码 + 状态机由 Rust WASM 提供 |
 
 浏览器受平台限制（WebTransport 为纯客户端协议）只提供 client；服务端能力由
 Rust / Node / Python 提供。协议编解码与客户端状态机（`echostream-client-core`）
@@ -117,6 +117,9 @@ echostream             统一入口（重导出 + prelude + 宏）
 ├── echostream-derive       过程宏：#[rpc] / #[event] / #[stream]
 ├── echostream-discovery    服务发现：mDNS（独立可选）
 ├── echostream-web          WebTransport 服务端（浏览器直连）
+├── echostream-ws           WebSocket 服务端（浏览器局域网直连，零证书）
+├── plugins/                基础插件：auth（认证）/ reconnect（自动重连）/ retry（RPC 重试）
+├── middlewares/            基础中间件：logging（消息日志）
 └── bindings/               Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）
 ```
 

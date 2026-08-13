@@ -3,7 +3,6 @@
 //! 运行：`cargo run -p echostream --example codec_probe`
 
 use echostream::prelude::*;
-use postcard;
 
 fn hex(bytes: &[u8]) -> String {
     bytes
