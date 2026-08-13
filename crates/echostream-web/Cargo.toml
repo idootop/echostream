@@ -1,0 +1,29 @@
+[package]
+name = "echostream-web"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "WebTransport 服务端与浏览器客户端支持"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+echostream-transport = { workspace = true }
+
+wtransport = "0.7"
+tokio = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+echostream = { workspace = true }
+postcard = { workspace = true }
+wtransport = { version = "0.7", features = ["dangerous-configuration"] }

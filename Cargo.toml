@@ -6,6 +6,7 @@ members = [
     "crates/echostream-transport",
     "crates/echostream-derive",
     "crates/echostream-discovery",
+    "crates/echostream-web",
 ]
 resolver = "2"
 
@@ -22,6 +23,7 @@ categories = ["network-programming", "asynchronous"]
 
 [workspace.dependencies]
 # Internal crates
+echostream = { path = "crates/echostream", version = "0.1.0" }
 echostream-core = { path = "crates/echostream-core", version = "0.1.0" }
 echostream-proto = { path = "crates/echostream-proto", version = "0.1.0" }
 echostream-transport = { path = "crates/echostream-transport", version = "0.1.0" }

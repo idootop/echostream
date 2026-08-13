@@ -4,7 +4,7 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use echostream_proto::Message;
-use echostream_transport::{QuicConn, connect};
+use echostream_transport::{Endpoint, QuicConn, connect};
 
 use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
@@ -110,7 +110,12 @@ impl ClientBuilder {
             })?;
         let conn: QuicConn = connect(addr).await?;
         let ctx = Arc::new(ServerContext::new());
-        let session = Session::with_timeout(ctx.next_session_id(), conn, ctx.clone(), self.timeout);
+        let session = Session::with_timeout(
+            ctx.next_session_id(),
+            Arc::new(conn) as Arc<dyn Endpoint>,
+            ctx.clone(),
+            self.timeout,
+        );
         let client = Client {
             session,
             router: self.router,
@@ -122,19 +127,18 @@ impl ClientBuilder {
 
 /// 客户端接收循环：处理服务端主动发来的 RPC / 事件 / 流
 async fn receive_loop(client: Client) {
-    let conn = client.session.conn().clone();
+    let conn = client.session.conn();
     loop {
         tokio::select! {
             bi = conn.accept_bi() => {
                 match bi {
                     Ok(mut stream) => match stream.read_message().await {
                         Ok(Some(Message::Request(req))) => {
-                            client.router.dispatch_rpc(client.session(), &mut stream, req).await;
-                            let _ = stream.finish();
+                            client.router.dispatch_rpc(client.session(), &mut *stream, req).await;
+                            let _ = stream.finish().await;
                         }
                         Ok(Some(Message::Stream(frame))) => {
-                            let (_, recv) = stream.split();
-                            client.router.dispatch_stream(client.session(), recv, frame).await;
+                            client.router.dispatch_stream(client.session(), stream, frame).await;
                         }
                         Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
                         Ok(None) | Err(_) => break,

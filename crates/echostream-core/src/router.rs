@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg};
-use echostream_transport::{BiStream, UniRecv};
+use echostream_transport::FrameIo;
 
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
 use crate::middleware::Middleware;
@@ -76,7 +76,7 @@ impl Router {
     }
 
     /// 分派 RPC 请求（在同一双向流上写回响应）
-    pub async fn dispatch_rpc(&self, session: &Session, stream: &mut BiStream, msg: RequestMsg) {
+    pub async fn dispatch_rpc(&self, session: &Session, stream: &mut dyn FrameIo, msg: RequestMsg) {
         // 中间件链
         let msg = match self
             .run_middlewares(session, Message::Request(msg.clone()))
@@ -136,7 +136,7 @@ impl Router {
     }
 
     /// 分派流（持续读取直到结束）
-    pub async fn dispatch_stream(&self, session: &Session, recv: UniRecv, msg: StreamMsg) {
+    pub async fn dispatch_stream(&self, session: &Session, recv: Box<dyn FrameIo>, msg: StreamMsg) {
         let name = msg.name.clone();
         let handler = self.stream.read().unwrap().get(&name).cloned();
         match handler {

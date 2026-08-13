@@ -12,4 +12,7 @@
 pub mod cert;
 pub mod quic;
 
-pub use quic::{BiStream, QuicConn, QuicEndpoint, UniRecv, UniSend, connect};
+pub use quic::{
+    BiStream, Endpoint, FrameIo, FrameRead, FrameWrite, QuicConn, QuicEndpoint, UniRecv, UniSend,
+    connect, encode_message, read_message_frame,
+};

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
-use echostream_transport::QuicConn;
+use echostream_transport::Endpoint;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::codec;
@@ -25,7 +25,7 @@ pub struct Session {
 
 struct SessionInner {
     id: u64,
-    conn: QuicConn,
+    conn: Arc<dyn Endpoint>,
     ctx: Arc<ServerContext>,
     state: RwLock<HashMap<String, Arc<dyn Any + Send + Sync>>>,
     next_msg_id: AtomicU64,
@@ -33,14 +33,15 @@ struct SessionInner {
 }
 
 impl Session {
-    pub(crate) fn new(id: u64, conn: QuicConn, ctx: Arc<ServerContext>) -> Self {
+    /// 创建会话（内部使用，供各传输实现调用）
+    pub fn new(id: u64, conn: Arc<dyn Endpoint>, ctx: Arc<ServerContext>) -> Self {
         Self::with_timeout(id, conn, ctx, DEFAULT_TIMEOUT)
     }
 
-    /// 创建会话并指定请求超时
-    pub(crate) fn with_timeout(
+    /// 创建会话并指定请求超时（内部使用）
+    pub fn with_timeout(
         id: u64,
-        conn: QuicConn,
+        conn: Arc<dyn Endpoint>,
         ctx: Arc<ServerContext>,
         timeout: std::time::Duration,
     ) -> Self {
@@ -125,7 +126,7 @@ impl Session {
                 data: codec::encode(req)?,
             }))
             .await?;
-        stream.finish()?;
+        stream.finish().await?;
 
         let resp = tokio::time::timeout(timeout, async {
             loop {
@@ -156,7 +157,7 @@ impl Session {
                 data: codec::encode(data)?,
             }))
             .await?;
-        stream.finish()
+        stream.finish().await
     }
 
     /// 创建流（推送连续数据）
@@ -171,8 +172,8 @@ impl Session {
         self.inner.conn.close();
     }
 
-    /// 底层连接（内部使用）
-    pub(crate) fn conn(&self) -> &QuicConn {
-        &self.inner.conn
+    /// 底层连接（内部使用，供传输实现调用）
+    pub fn conn(&self) -> &dyn Endpoint {
+        self.inner.conn.as_ref()
     }
 }

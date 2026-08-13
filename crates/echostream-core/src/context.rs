@@ -22,8 +22,15 @@ struct ServerContextInner {
     next_session_id: AtomicU64,
 }
 
+impl Default for ServerContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServerContext {
-    pub(crate) fn new() -> Self {
+    /// 创建上下文（内部使用）
+    pub fn new() -> Self {
         Self {
             inner: Arc::new(ServerContextInner {
                 state: RwLock::new(HashMap::new()),
@@ -76,15 +83,17 @@ impl ServerContext {
         Ok(())
     }
 
-    // ---------- 内部接口 ----------
+    // ---------- 内部接口（供各传输实现调用） ----------
 
-    pub(crate) fn next_session_id(&self) -> u64 {
+    /// 分配下一个会话 ID（内部使用）
+    pub fn next_session_id(&self) -> u64 {
         self.inner
             .next_session_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub(crate) fn register_session(&self, session: Session) {
+    /// 注册会话（内部使用）
+    pub fn register_session(&self, session: Session) {
         self.inner
             .sessions
             .write()
@@ -92,7 +101,8 @@ impl ServerContext {
             .insert(session.id(), session);
     }
 
-    pub(crate) fn unregister_session(&self, id: u64) {
+    /// 注销会话（内部使用）
+    pub fn unregister_session(&self, id: u64) {
         self.inner.sessions.write().unwrap().remove(&id);
     }
 }

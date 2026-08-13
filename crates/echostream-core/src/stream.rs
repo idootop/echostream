@@ -2,20 +2,20 @@
 
 use bytes::Bytes;
 use echostream_proto::{Message, Result, StreamMsg, Timestamp};
-use echostream_transport::{UniRecv, UniSend};
+use echostream_transport::FrameIo;
 
 /// 流发送器：发送流数据帧（自动递增序号 + 时间戳）
 pub struct StreamSender {
-    send: UniSend,
+    io: Box<dyn FrameIo>,
     id: u64,
     name: String,
     seq: u64,
 }
 
 impl StreamSender {
-    pub(crate) fn new(send: UniSend, id: u64, name: String) -> Self {
+    pub(crate) fn new(io: Box<dyn FrameIo>, id: u64, name: String) -> Self {
         Self {
-            send,
+            io,
             id,
             name,
             seq: 0,
@@ -32,7 +32,7 @@ impl StreamSender {
             data: data.into(),
         };
         self.seq += 1;
-        self.send.write_message(&Message::Stream(frame)).await
+        self.io.write_message(&Message::Stream(frame)).await
     }
 
     /// 流名
@@ -41,26 +41,26 @@ impl StreamSender {
     }
 
     /// 关闭流（对端读到流结束）
-    pub fn finish(&mut self) -> Result<()> {
-        self.send.finish()
+    pub async fn finish(&mut self) -> Result<()> {
+        self.io.finish().await
     }
 }
 
 /// 流接收器：持续读取流数据帧直到结束
 pub struct StreamReceiver {
-    recv: UniRecv,
+    io: Box<dyn FrameIo>,
     id: u64,
     name: String,
     pending: Option<StreamMsg>, // 首帧缓存（分派时已读出的第一帧）
 }
 
 impl StreamReceiver {
-    pub(crate) fn new(recv: UniRecv, first: StreamMsg) -> Self {
+    pub(crate) fn new(io: Box<dyn FrameIo>, first: StreamMsg) -> Self {
         Self {
             id: first.id,
             name: first.name.clone(),
             pending: Some(first),
-            recv,
+            io,
         }
     }
 
@@ -70,7 +70,7 @@ impl StreamReceiver {
             return Ok(Some(first));
         }
         loop {
-            match self.recv.read_message().await? {
+            match self.io.read_message().await? {
                 Some(Message::Stream(frame)) if frame.id == self.id => return Ok(Some(frame)),
                 Some(_) => continue, // 忽略不属于本流的帧
                 None => return Ok(None),

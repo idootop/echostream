@@ -1,23 +1,28 @@
-//! 服务端：监听、接受连接、消息分发
+//! WebTransport 服务端：监听、接受浏览器连接、消息分发
+//!
+//! 复用 `echostream-core` 的 Router / Session / ServerContext / Handler，
+//! 与原生 QUIC 服务端共享同一套处理器体系。
 
 use std::sync::Arc;
 
-use echostream_proto::Message;
-use echostream_transport::{Endpoint, QuicEndpoint};
+use echostream_core::{
+    ServerContext, Session,
+    handler::{DynEventHandler, DynRpcHandler, StreamHandler},
+    middleware::Middleware,
+    router::Router,
+};
+use echostream_proto::{Error, Message, Result};
+use wtransport::endpoint::endpoint_side::Server as WtServer;
+use wtransport::{Endpoint, Identity, ServerConfig};
 
-use crate::context::ServerContext;
-use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
-use crate::middleware::Middleware;
-use crate::plugin::ServerPlugin;
-use crate::router::Router;
-use crate::session::Session;
+use crate::wt::WtConn;
 
-/// 生命周期钩子类型：同步回调（异步逻辑可在回调内 `tokio::spawn`）
+/// 生命周期钩子类型
 type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;
 
-/// 服务端
-pub struct Server {
-    endpoint: QuicEndpoint,
+/// WebTransport 服务端
+pub struct WebServer {
+    endpoint: wtransport::Endpoint<WtServer>,
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
     on_start: Vec<Hook<ServerContext>>,
@@ -27,46 +32,59 @@ pub struct Server {
     shutdown_signal: tokio::sync::Notify,
 }
 
-impl Server {
+impl WebServer {
     /// 本地监听地址
     pub fn endpoint_addr(&self) -> Option<std::net::SocketAddr> {
         self.endpoint.local_addr().ok()
     }
 
     /// 运行服务（阻塞直到 `shutdown` 被调用）
-    pub async fn run(&self) -> echostream_proto::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         for hook in &self.on_start {
             hook(&self.ctx);
         }
 
         loop {
             tokio::select! {
-                conn = self.endpoint.accept() => {
-                    match conn {
-                        Some(conn) => {
-                            let session = Session::new(self.ctx.next_session_id(), Arc::new(conn) as Arc<dyn Endpoint>, self.ctx.clone());
-                            self.ctx.register_session(session.clone());
-                            tracing::debug!(
-                                "客户端连接: {} (session {})",
-                                session.peer_addr(),
-                                session.id()
-                            );
-                            let s = session.clone();
-                            for hook in &self.on_connect {
-                                hook(&s);
-                            }
-                            let hooks = self.on_disconnect.clone();
-                            let r = self.router.clone();
-                            let c = self.ctx.clone();
-                            tokio::spawn(async move {
-                                handle_connection(session, r, c).await;
-                                for hook in &hooks {
-                                    hook(&s);
-                                }
-                            });
+                session = self.endpoint.accept() => {
+                    let session_request = match session.await {
+                        Ok(req) => req,
+                        Err(e) => {
+                            tracing::debug!("WebTransport 连接失败: {e}");
+                            continue;
                         }
-                        None => break,
+                    };
+                    let conn = match session_request.accept().await {
+                        Ok(conn) => conn,
+                        Err(e) => {
+                            tracing::debug!("WebTransport 会话握手失败: {e}");
+                            continue;
+                        }
+                    };
+                    let session = Session::new(
+                        self.ctx.next_session_id(),
+                        Arc::new(WtConn::new(conn)) as Arc<dyn echostream_transport::Endpoint>,
+                        self.ctx.clone(),
+                    );
+                    self.ctx.register_session(session.clone());
+                    tracing::debug!(
+                        "浏览器连接: {} (session {})",
+                        session.peer_addr(),
+                        session.id()
+                    );
+                    let s = session.clone();
+                    for hook in &self.on_connect {
+                        hook(&s);
                     }
+                    let hooks = self.on_disconnect.clone();
+                    let r = self.router.clone();
+                    let c = self.ctx.clone();
+                    tokio::spawn(async move {
+                        handle_connection(session, r, c).await;
+                        for hook in &hooks {
+                            hook(&s);
+                        }
+                    });
                 }
                 _ = self.shutdown_signal.notified() => break,
             }
@@ -81,16 +99,15 @@ impl Server {
     /// 优雅关闭：停止接受新连接并触发 on_stop
     pub fn shutdown(&self) {
         self.shutdown_signal.notify_waiters();
-        self.endpoint.close();
+        self.endpoint.close(0u32.into(), b"server closed");
     }
 }
 
-/// 处理单个连接的消息循环
+/// 处理单个连接的消息循环（与 QUIC 服务端相同的分派逻辑）
 async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<ServerContext>) {
     let conn = session.conn();
     loop {
         tokio::select! {
-            // 双向流：RPC 请求 / 流数据
             bi = conn.accept_bi() => {
                 match bi {
                     Ok(mut stream) => match stream.read_message().await {
@@ -109,7 +126,6 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
                     Err(_) => break,
                 }
             }
-            // 单向流：事件 / 流数据
             uni = conn.accept_uni() => {
                 match uni {
                     Ok(mut recv) => match recv.read_message().await {
@@ -130,11 +146,11 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
         }
     }
     ctx.unregister_session(session.id());
-    tracing::debug!("客户端断开: session {}", session.id());
+    tracing::debug!("浏览器断开: session {}", session.id());
 }
 
-/// 服务端构建器
-pub struct ServerBuilder {
+/// WebTransport 服务端构建器
+pub struct WebServerBuilder {
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
     addr: Option<String>,
@@ -144,13 +160,13 @@ pub struct ServerBuilder {
     on_disconnect: Vec<Hook<Session>>,
 }
 
-impl Default for ServerBuilder {
+impl Default for WebServerBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ServerBuilder {
+impl WebServerBuilder {
     /// 创建构建器
     pub fn new() -> Self {
         Self {
@@ -164,7 +180,7 @@ impl ServerBuilder {
         }
     }
 
-    /// 绑定监听地址
+    /// 绑定监听地址（HTTP/3 + WebTransport）
     pub fn bind(mut self, addr: impl Into<String>) -> Self {
         self.addr = Some(addr.into());
         self
@@ -176,7 +192,7 @@ impl ServerBuilder {
         self
     }
 
-    /// 注册事件处理器（同名事件支持多个监听器）
+    /// 注册事件处理器
     pub fn add_event<H: DynEventHandler>(self, handler: H) -> Self {
         self.router.add_event(handler);
         self
@@ -188,15 +204,10 @@ impl ServerBuilder {
         self
     }
 
-    /// 添加中间件（数据面：鉴权、日志、拦截等）
+    /// 添加中间件
     pub fn middleware<M: Middleware>(self, middleware: M) -> Self {
         self.router.add_middleware(middleware);
         self
-    }
-
-    /// 添加插件（控制面：打包处理器与钩子）
-    pub fn plugin<P: ServerPlugin>(self, plugin: P) -> Self {
-        (Box::new(plugin) as Box<dyn ServerPlugin>).install(self)
     }
 
     /// 服务启动钩子
@@ -235,18 +246,29 @@ impl ServerBuilder {
         self
     }
 
-    /// 访问服务端全局上下文（可提前注册全局状态）
+    /// 访问服务端全局上下文
     pub fn ctx(&self) -> &Arc<ServerContext> {
         &self.ctx
     }
 
-    /// 构建服务端
-    pub async fn build(self) -> echostream_proto::Result<Server> {
+    /// 构建服务端（自动生成自签名证书）
+    pub async fn build(self) -> Result<WebServer> {
         let addr = self
             .addr
-            .ok_or_else(|| echostream_proto::Error::InvalidParameter("未指定监听地址".into()))?;
-        let endpoint = QuicEndpoint::bind(addr).await?;
-        Ok(Server {
+            .ok_or_else(|| Error::InvalidParameter("未指定监听地址".into()))?;
+        let addr = addr
+            .parse::<std::net::SocketAddr>()
+            .map_err(|e| Error::InvalidParameter(format!("监听地址无效: {e}")))?;
+        let identity =
+            Identity::self_signed(["localhost"]).map_err(|e| Error::Io(e.to_string()))?;
+        let server_config = ServerConfig::builder()
+            .with_bind_address(addr)
+            .with_identity(identity)
+            .build();
+        let endpoint =
+            Endpoint::<WtServer>::server(server_config).map_err(|e| Error::Io(e.to_string()))?;
+
+        Ok(WebServer {
             endpoint,
             router: self.router,
             ctx: self.ctx,
@@ -258,8 +280,8 @@ impl ServerBuilder {
         })
     }
 
-    /// 构建并运行（阻塞直到服务关闭）
-    pub async fn serve(self) -> echostream_proto::Result<()> {
+    /// 构建并运行
+    pub async fn serve(self) -> Result<()> {
         self.build().await?.run().await
     }
 }

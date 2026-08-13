@@ -70,7 +70,7 @@ async fn run_client(addr: String) -> Result<()> {
     for i in 0..3 {
         stream.send(format!("第 {i} 帧")).await?;
     }
-    stream.finish()?;
+    stream.finish().await?;
 
     // 等待服务端处理完成
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
