@@ -1,0 +1,12 @@
+[package]
+name = "echostream-middleware-logging"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 日志中间件：结构化记录入站消息与处理耗时"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }

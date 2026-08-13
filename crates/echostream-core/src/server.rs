@@ -104,22 +104,29 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
     }
     loop {
         tokio::select! {
-            // 双向流：RPC 请求 / 流数据
+            // 双向流：RPC 请求 / 流数据（spawn 并行处理，避免阻塞 accept 循环）
             bi = conn.accept_bi() => {
                 match bi {
-                    Ok(mut stream) => match stream.read_message().await {
-                        Ok(Some(Message::Request(req))) => {
-                            router.dispatch_rpc(&session, &mut *stream, req).await;
-                            let _ = stream.finish().await;
-                            // 读尽剩余帧，避免 drop 未读完的接收流触发对端写错误
-                            while let Ok(Some(_)) = stream.read_message().await {}
-                        }
-                        Ok(Some(Message::Stream(frame))) => {
-                            router.dispatch_stream(&session, stream, frame).await;
-                        }
-                        Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
-                        Ok(None) | Err(_) => break,
-                    },
+                    Ok(stream) => {
+                        let s = session.clone();
+                        let r = router.clone();
+                        tokio::spawn(async move {
+                            let mut stream = stream;
+                            match stream.read_message().await {
+                                Ok(Some(Message::Request(req))) => {
+                                    r.dispatch_rpc(&s, &mut *stream, req).await;
+                                    let _ = stream.finish().await;
+                                    // 读尽剩余帧，避免 drop 未读完的接收流触发对端写错误
+                                    while let Ok(Some(_)) = stream.read_message().await {}
+                                }
+                                Ok(Some(Message::Stream(frame))) => {
+                                    r.dispatch_stream(&s, stream, frame).await;
+                                }
+                                Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
+                                Ok(None) | Err(_) => {}
+                            }
+                        });
+                    }
                     Err(_) => break,
                 }
             }

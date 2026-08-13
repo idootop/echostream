@@ -5,10 +5,11 @@
 //!
 //! 运行：`cargo run -p echostream --example discovery`
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use echostream::prelude::*;
-use echostream_discovery::{advertise, discover};
+use echostream_discovery::{advertise_with, discover};
 
 /// RPC：加法
 #[rpc("add")]
@@ -29,7 +30,11 @@ async fn main() -> Result<()> {
     let addr = server
         .endpoint_addr()
         .ok_or_else(|| Error::InvalidParameter("无法获取监听地址".into()))?;
-    let _advertiser = advertise(service_name, addr.port())?;
+    // 广播服务并携带元数据（版本/能力，供发现方读取）
+    let mut metadata = HashMap::new();
+    metadata.insert("version".to_string(), "0.1.0".to_string());
+    metadata.insert("role".to_string(), "demo-server".to_string());
+    let _advertiser = advertise_with(service_name, addr.port(), metadata)?;
     println!("[server] 已广播服务 {service_name} @ {addr}");
 
     let server_handle = tokio::spawn(async move {
@@ -40,9 +45,15 @@ async fn main() -> Result<()> {
     println!("[client] 正在发现服务 {service_name} ...");
     let found = discover(service_name, Duration::from_secs(5)).await?;
     assert!(!found.is_empty(), "未发现服务");
-    println!("[client] 发现 {} 个服务: {:?}", found.len(), found);
+    for svc in &found {
+        println!(
+            "[client] 发现服务 {} @ {}，元数据: {:?}",
+            svc.name, svc.addr, svc.metadata
+        );
+    }
+    assert_eq!(found[0].metadata.get("version").map(String::as_str), Some("0.1.0"));
 
-    let client = ClientBuilder::new().connect(found[0]).await?;
+    let client = ClientBuilder::new().connect(found[0].addr).await?;
     let sum: i64 = client.request("add", &(40, 2)).await?;
     println!("[client] add(40, 2) = {sum}");
     assert_eq!(sum, 42);

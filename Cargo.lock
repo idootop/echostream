@@ -291,6 +291,9 @@ dependencies = [
  "echostream-core",
  "echostream-derive",
  "echostream-discovery",
+ "echostream-middleware-logging",
+ "echostream-plugin-auth",
+ "echostream-plugin-reconnect",
  "echostream-proto",
  "postcard",
  "serde",
@@ -344,6 +347,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "echostream-middleware-logging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "echostream-core",
+ "echostream-proto",
+ "tracing",
+]
+
+[[package]]
 name = "echostream-node"
 version = "0.1.0"
 dependencies = [
@@ -355,6 +368,31 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "tokio",
+]
+
+[[package]]
+name = "echostream-plugin-auth"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "echostream-core",
+ "echostream-proto",
+ "postcard",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echostream-plugin-reconnect"
+version = "0.1.0"
+dependencies = [
+ "echostream-core",
+ "echostream-proto",
+ "echostream-transport",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

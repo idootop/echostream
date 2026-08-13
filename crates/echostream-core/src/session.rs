@@ -66,6 +66,16 @@ impl Session {
         self.inner.id
     }
 
+    /// 请求超时
+    pub fn timeout(&self) -> std::time::Duration {
+        self.inner.timeout
+    }
+
+    /// 底层连接（Arc 共享，供接收循环使用）
+    pub fn conn_arc(&self) -> Arc<dyn Endpoint> {
+        self.inner.conn.clone()
+    }
+
     /// 对端地址
     pub fn peer_addr(&self) -> SocketAddr {
         self.inner.conn.peer_addr()

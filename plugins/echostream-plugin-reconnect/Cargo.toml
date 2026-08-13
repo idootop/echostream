@@ -1,0 +1,13 @@
+[package]
+name = "echostream-plugin-reconnect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 重连插件：客户端断线自动重连（指数退避）"
+
+[dependencies]
+tokio = { workspace = true }
+echostream-core = { workspace = true }
+echostream-transport = { workspace = true }
+echostream-proto = { workspace = true }
+tracing = { workspace = true }

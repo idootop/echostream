@@ -28,7 +28,7 @@ pub use echostream_proto::endpoint::{
 };
 pub use handler::{DynEventHandler, DynRpcHandler, EventHandler, RpcHandler, StreamHandler};
 pub use middleware::Middleware;
-pub use plugin::ServerPlugin;
+pub use plugin::{ClientPlugin, ServerPlugin};
 pub use router::Router;
 pub use server::{Server, ServerBuilder};
 pub use session::Session;

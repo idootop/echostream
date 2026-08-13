@@ -22,6 +22,9 @@ echostream-discovery = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+echostream-plugin-auth = { path = "../../plugins/echostream-plugin-auth" }
+echostream-plugin-reconnect = { path = "../../plugins/echostream-plugin-reconnect" }
+echostream-middleware-logging = { path = "../../middlewares/echostream-middleware-logging" }
 bytes = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true }

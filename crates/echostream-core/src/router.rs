@@ -93,7 +93,17 @@ impl Router {
             .await
         {
             Some(Message::Request(m)) => m,
-            _ => return, // 被拦截
+            // 被中间件拦截：回错误响应，避免客户端误判为连接断开
+            _ => {
+                let response = ResponseMsg {
+                    id: msg.id,
+                    code: StatusCode::FORBIDDEN,
+                    message: Some("请求被中间件拦截".into()),
+                    data: Bytes::new(),
+                };
+                let _ = stream.write_message(&Message::Response(response)).await;
+                return;
+            }
         };
 
         let handler = self.rpc.read().unwrap().get(&msg.name).cloned();

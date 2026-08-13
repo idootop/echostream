@@ -1,0 +1,16 @@
+[package]
+name = "echostream-plugin-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 认证插件：连接 token 认证（中间件校验）"
+
+[dependencies]
+postcard = { workspace = true }
+serde = { workspace = true }
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
