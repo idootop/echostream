@@ -8,6 +8,7 @@ members = [
     "crates/echostream-discovery",
     "crates/echostream-client-core",
     "crates/echostream-web",
+    "crates/echostream-ws",
     "bindings/node",
     "bindings/wasm",
     "bindings/python",

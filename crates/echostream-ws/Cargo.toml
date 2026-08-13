@@ -1,0 +1,29 @@
+[package]
+name = "echostream-ws"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "WebSocket 服务端端点：局域网 Web 端零证书通信"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-transport = { workspace = true }
+postcard = { workspace = true }
+echostream-core = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tokio-tungstenite = "0.30"
+tungstenite = "0.30"
+futures-util = "0.3"
+
+[dev-dependencies]
+echostream = { workspace = true }
+tokio = { workspace = true }

@@ -53,6 +53,16 @@ impl Router {
         self.middlewares.write().unwrap().push(Arc::new(middleware));
     }
 
+    /// 获取 RPC 处理器（供非流式传输分派）
+    pub fn get_rpc(&self, name: &str) -> Option<Arc<dyn DynRpcHandler>> {
+        self.rpc.read().unwrap().get(name).cloned()
+    }
+
+    /// 是否存在流处理器
+    pub fn has_stream(&self, name: &str) -> bool {
+        self.stream.read().unwrap().contains_key(name)
+    }
+
     /// 移除 RPC 处理器
     pub fn remove_rpc(&self, name: &str) {
         self.rpc.write().unwrap().remove(name);

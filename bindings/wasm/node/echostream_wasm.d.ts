@@ -21,6 +21,10 @@ export class ClientCoreHandle {
    */
   handle_inbound(frame: Uint8Array): Uint8Array | undefined;
   /**
+   * 构造流结束标记（WebSocket 传输的流关闭）
+   */
+  build_stream_end(id: bigint): Uint8Array;
+  /**
    * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
    */
   build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;

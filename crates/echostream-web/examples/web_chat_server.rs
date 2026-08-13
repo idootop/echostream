@@ -68,14 +68,15 @@ async fn main() -> Result<()> {
         .collect::<String>();
     println!("[cert-hash] {hash_hex}");
 
+    let bind = std::env::var("ECHO_BIND").unwrap_or_else(|_| "0.0.0.0:4433".into());
     let server = WebServerBuilder::new()
-        .bind("0.0.0.0:4433")
+        .bind(&bind)
         .add_rpc(Add)
         .add_event(OnHello)
         .add_stream(OnChat)
         .identity(identity)
         .build()
         .await?;
-    println!("[server] WebTransport 监听 0.0.0.0:4433（常驻）");
+    println!("[server] WebTransport 监听 {bind}（常驻）");
     server.run().await
 }

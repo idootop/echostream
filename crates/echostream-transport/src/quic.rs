@@ -107,9 +107,12 @@ pub trait FrameIo: Send {
     async fn finish(&mut self) -> Result<()>;
 }
 
-/// 连接抽象（适配 QUIC / WebTransport 等不同传输的连接）
+/// 连接抽象（适配 QUIC / WebTransport / WebSocket 等不同传输的连接）
 #[async_trait]
 pub trait Endpoint: Send + Sync + 'static {
+    /// 类型擦除访问（供传输实现内部使用）
+    fn as_any(&self) -> &dyn std::any::Any;
+
     /// 打开双向流
     async fn open_bi(&self) -> Result<Box<dyn FrameIo>>;
     /// 打开单向发送流
@@ -274,6 +277,10 @@ impl QuicConn {
 
 #[async_trait]
 impl Endpoint for QuicConn {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     async fn open_bi(&self) -> Result<Box<dyn FrameIo>> {
         let (send, recv) = to_echo(self.conn.open_bi().await)?;
         Ok(Box::new(BiStream { send, recv }))

@@ -21,6 +21,10 @@ export class ClientCoreHandle {
    */
   handle_inbound(frame: Uint8Array): Uint8Array | undefined;
   /**
+   * 构造流结束标记（WebSocket 传输的流关闭）
+   */
+  build_stream_end(id: bigint): Uint8Array;
+  /**
    * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
    */
   build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;
@@ -94,6 +98,7 @@ export interface InitOutput {
   readonly __wbg_clientcorehandle_free: (a: number, b: number) => void;
   readonly clientcorehandle_build_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly clientcorehandle_build_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
+  readonly clientcorehandle_build_stream_end: (a: number, b: number, c: bigint) => void;
   readonly clientcorehandle_build_stream_frame: (a: number, b: number, c: bigint, d: number, e: number, f: number, g: number, h: bigint) => void;
   readonly clientcorehandle_handle_inbound: (a: number, b: number, c: number, d: number) => void;
   readonly clientcorehandle_new: () => number;

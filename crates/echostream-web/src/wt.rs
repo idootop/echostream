@@ -24,6 +24,10 @@ fn wt_conn_err(e: wtransport::error::ConnectionError) -> Error {
 
 #[async_trait]
 impl Endpoint for WtConn {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     async fn open_bi(&self) -> Result<Box<dyn FrameIo>> {
         let streams = self
             .conn

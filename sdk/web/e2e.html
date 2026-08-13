@@ -4,14 +4,15 @@
 <body>
 <script type="module">
   import { EchoStream } from "./echostream.js";
-  window.__e2e = async () => {
+  window.__e2e = async (wtUrl) => {
     const results = {};
+    const url = wtUrl || "https://127.0.0.1:4433";
     // direct 验证（仅当注入 cert-hash 时；Firefox 走标准证书验证则跳过）
     if (window.__certHash) {
       try {
         const raw = window.__certHash;
         const bytes = new Uint8Array(raw.hex.match(/.{2}/g).map((b) => parseInt(b, 16)));
-        const wt = new WebTransport("https://127.0.0.1:4433", {
+        const wt = new WebTransport(url, {
           serverCertificateHashes: [{ algorithm: "sha-256", value: bytes.buffer }],
         });
         await wt.ready;
@@ -22,7 +23,7 @@
       }
     }
     try {
-      const client = new EchoStream("https://127.0.0.1:4433");
+      const client = new EchoStream(url);
     await client.connect();
     results.connected = true;
 

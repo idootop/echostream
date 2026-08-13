@@ -319,6 +319,29 @@ export class ClientCoreHandle {
         }
     }
     /**
+     * 构造流结束标记（WebSocket 传输的流关闭）
+     * @param {bigint} id
+     * @returns {Uint8Array}
+     */
+    build_stream_end(id) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.clientcorehandle_build_stream_end(retptr, this.__wbg_ptr, id);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
      * @param {bigint} id
      * @param {string} name

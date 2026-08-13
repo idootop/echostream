@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 use echostream_proto::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp,
+    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
 };
 
 /// 事件监听器：接收事件载荷字节（状态机为单线程使用，无 Send 约束）
@@ -94,6 +94,11 @@ impl ClientCore {
         frame
     }
 
+    /// 构造流结束标记（WebSocket 传输的流关闭）
+    pub fn build_stream_end(&self, id: u64) -> Message {
+        Message::StreamEnd(StreamEndMsg { id })
+    }
+
     /// 构造响应帧（供对端主动调用的异步回复）
     pub fn build_response(&self, id: u64, data: Bytes) -> Message {
         Message::Response(ResponseMsg {
@@ -162,7 +167,7 @@ impl ClientCore {
                     Some(self.build_error_response(req.id, "handler not found"))
                 }
             }
-            Message::Stream(_) => None,
+            Message::Stream(_) | Message::StreamEnd(_) => None,
         }
     }
 

@@ -14,6 +14,15 @@ pub enum Message {
     Event(EventMsg),
     /// 流数据
     Stream(StreamMsg),
+    /// 流结束标记（WebSocket 等无流关闭语义的传输上使用）
+    StreamEnd(StreamEndMsg),
+}
+
+/// 流结束标记
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamEndMsg {
+    /// 所属流的 ID
+    pub id: u64,
 }
 
 /// RPC 请求载荷

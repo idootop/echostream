@@ -9,7 +9,7 @@
 
 use bytes::Bytes;
 use echostream_proto::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp,
+    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
 };
 use js_sys::{Array, BigInt, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -256,6 +256,7 @@ fn js_to_message(v: &JsValue) -> Result<Message, JsValue> {
             sender_ts: Timestamp(get_u64(&obj, "senderTs")?),
             data: get_bytes(&obj, "data")?,
         })),
+        "streamEnd" => Ok(Message::StreamEnd(StreamEndMsg { id })),
         other => Err(js_err(&format!("未知消息类型: {other}"))),
     }
 }
@@ -302,6 +303,10 @@ fn message_to_js(msg: &Message) -> Result<JsValue, JsValue> {
             )
             .unwrap();
             Reflect::set(&obj, &"data".into(), &Uint8Array::from(&m.data[..]).into()).unwrap();
+        }
+        Message::StreamEnd(m) => {
+            Reflect::set(&obj, &"type".into(), &"streamEnd".into()).unwrap();
+            Reflect::set(&obj, &"id".into(), &JsValue::from_f64(m.id as f64)).unwrap();
         }
     }
     Ok(obj.into())
@@ -437,6 +442,12 @@ impl ClientCoreHandle {
         let msg =
             self.core
                 .build_stream_frame(id, name, Bytes::copy_from_slice(payload), sender_ts);
+        encode_frame_bytes(&msg)
+    }
+
+    /// 构造流结束标记（WebSocket 传输的流关闭）
+    pub fn build_stream_end(&mut self, id: u64) -> Result<Vec<u8>, JsValue> {
+        let msg = self.core.build_stream_end(id);
         encode_frame_bytes(&msg)
     }
 
