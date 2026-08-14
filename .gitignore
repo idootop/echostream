@@ -9,4 +9,10 @@
 temp
 __pycache__/
 *.pyc
-tools/e2e/.matrix-logs/
+
+# 构建产物
+bindings/node/echostream-node.node
+bindings/wasm/node/echostream_wasm_bg.wasm
+bindings/web/wasm/echostream_wasm_bg.wasm
+target/wheels/
+.matrix-logs/

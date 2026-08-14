@@ -1,7 +1,6 @@
 //! EchoStream 跨端 E2E 矩阵：通用对端（server / client 双角色）
 //!
-//! 由 tools/e2e/cross_matrix.sh 驱动，与 Node / Python 绑定交叉组合，
-//! 验证四端线缆格式（长度前缀 + postcard）跨端一致。
+//! 与 Node / Python 绑定交叉组合，验证四端线缆格式（长度前缀 + postcard）跨端一致。
 //!
 //! 线缆格式约定（与核心一致）：
 //! - RPC 载荷 = postcard 编码（varint）
