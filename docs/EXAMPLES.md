@@ -48,4 +48,6 @@
 
 ## 跨端矩阵
 
-    node scripts/cross_e2e.mjs    # Rust ↔ Node ↔ Python 6 组合交叉验证
+```bash
+node scripts/cross_e2e.mjs    # Rust ↔ Node ↔ Python 6 组合交叉验证
+```
