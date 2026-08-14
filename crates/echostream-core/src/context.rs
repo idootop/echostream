@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock};
 
+use bytes::Bytes;
 use echostream_proto::Result;
 use serde::Serialize;
 
@@ -75,10 +76,18 @@ impl ServerContext {
             .collect()
     }
 
-    /// 广播事件到所有在线会话
+    /// 广播事件到所有在线会话（自动序列化）
     pub async fn broadcast<T: Serialize + Send>(&self, name: &str, data: &T) -> Result<()> {
         for session in self.sessions() {
             session.emit(name, data).await?;
+        }
+        Ok(())
+    }
+
+    /// 广播事件到所有在线会话（载荷为已编码字节，不做二次序列化）
+    pub async fn broadcast_raw(&self, name: &str, payload: Bytes) -> Result<()> {
+        for session in self.sessions() {
+            session.emit_raw(name, payload.clone()).await?;
         }
         Ok(())
     }

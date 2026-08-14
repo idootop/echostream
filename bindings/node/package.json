@@ -1,17 +1,33 @@
 {
   "name": "echostream-node",
   "version": "0.1.0",
-  "description": "EchoStream Node.js binding — 基于 QUIC 的双向 RPC / Event / Stream 实时通信框架",
+  "description": "EchoStream Node.js binding — 基于 QUIC 的双向 RPC / Event / Stream 实时通信框架（自动编解码）",
+  "type": "module",
   "main": "index.js",
-  "type": "commonjs",
+  "exports": {
+    ".": "./index.js",
+    "./postcard": "./postcard.js"
+  },
   "license": "MIT",
-  "keywords": ["rpc", "quic", "streaming", "realtime", "websocket"],
-  "files": ["index.js", "echostream-node.node", "README.md"],
+  "keywords": [
+    "rpc",
+    "quic",
+    "streaming",
+    "realtime",
+    "websocket"
+  ],
+  "files": [
+    "index.js",
+    "postcard.js",
+    "echostream-node.node",
+    "README.md"
+  ],
   "scripts": {
     "build": "cargo build -p echostream-node --release",
-    "test": "node test/server.test.cjs"
+    "test": "node test/codec.test.mjs && node test/server.test.mjs",
+    "test:cross": "node test/cross_e2e.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   }
 }

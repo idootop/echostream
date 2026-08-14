@@ -1,35 +1,96 @@
-# EchoStream Bindings（多语言绑定）
+# EchoStream 多端绑定
 
-所有语言绑定统一位于本目录：
+四端共享同一份 Rust 核心（协议编解码、客户端状态机、RPC/事件/流调度），
+**各端使用 API 均自动完成数据编解码** —— 业务侧直接传原生值，无需手写字节。
 
-| 目录 | 技术 | 说明 |
-|------|------|------|
-| `node/` | napi-rs | Node.js 绑定（完整 client + server，Rust crate） |
-| `python/` | PyO3 | Python 绑定（完整 client + server，Rust crate） |
-| `wasm/` | wasm-bindgen | 协议编解码 + 无 I/O 状态机（Rust crate，供 Web/Node 复用） |
-| `web/` | 纯 JS | 浏览器 SDK（WebSocket/WebTransport 双传输，依赖 wasm 产物） |
+| 端 | 形态 | 能力 | 自动编解码 |
+|----|------|------|-----------|
+| **Rust** | crates.io（`echostream`） | 完整 client + server | derive 宏强类型编解码 |
+| **Node.js** | npm（`echostream-node`，napi-rs） | 完整 client + server | 纯 JS postcard 编解码（ESM） |
+| **Python** | PyPI（`echostream`，PyO3） | 完整 client + server | 纯 Python postcard 编解码 |
+| **Web** | `bindings/web`（WebSocket / WebTransport 双传输） | 浏览器 client | WASM 编解码（Rust 单一事实来源） |
 
-分层：`wasm/`（Rust 编译产物）→ `web/`（JS SDK 消费）；`node/`、`python/` 为独立原生绑定。
+## 自动编解码约定（跨端统一）
 
-Web SDK 构建（wasm 产物）：
-```bash
-cargo build -p echostream-wasm --target wasm32-unknown-unknown --release
-wasm-bindgen --target web --out-dir bindings/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
-wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+所有 RPC / Event / Stream 载荷遵循同一编码约定（`echostream-proto::dynamic`）：
+
+| 语言值 | 线缆格式 | Rust 对应 |
+|--------|----------|-----------|
+| 整数（含负数） | i64 ZigZag varint | `i64` |
+| 非负 BigInt / 大整数 | u64 普通 varint | `u64` |
+| 浮点数 | f64 小端 8 字节 | `f64` |
+| 布尔 | 单字节 0/1 | `bool` |
+| 字符串 | varint 长度 + UTF-8 | `String` |
+| 字节数组 | varint 长度 + 原始字节 | `Vec<u8>` / `Bytes` |
+| 数组 / 多参数 | 元组字段序（无长度前缀） | 元组 / 结构体 |
+| 对象 / dict | 结构体字段序（无键名） | 结构体 |
+| null / undefined / None | 空载荷 | `()` |
+
+解码默认智能推断；歧义场景（如 Vec 与元组、空字符串与数字 0）可传
+显式 schema（`"number" | "string" | "bytes" | "f64" | "f32" | "bool" | "list" | 数组 | 对象`）。
+
+## 各端快速上手
+
+### Rust（derive 宏，强类型）
+
+```rust
+use echostream::prelude::*;
+
+#[rpc("add")]
+async fn add(_s: &Session, (a, b): (i64, i64)) -> Result<i64> { Ok(a + b) }
+
+let sum: i64 = client.request("add", &(10, 20)).await?; // 30
 ```
 
-## 载荷编码约定（跨端线缆格式）
+### Node.js（ESM）
 
-RPC / 事件载荷 = **postcard 序列化**（与 Rust 核心一致），各端调用方负责编解码：
+```js
+import { connect, ServerBuilder } from "echostream-node";
 
-| 内容 | 编码 | 示例 |
-|------|------|------|
-| RPC 请求/响应 | postcard（**i64 用 ZigZag varint**：10 → `0x14`；元组无长度前缀） | `(i64,i64)(10,20)` → `14 28` |
-| 事件 | postcard String（varint 长度 + UTF-8） | `"hi"` → `02 68 69` |
-| 流帧 | 原始字节（无编码） | — |
+const client = await connect("127.0.0.1:5000");
+const sum = await client.request("add", 10, 20); // 30
+await client.emit("hello", "world");
+client.onEvent("hello", (data) => console.log(data));
 
-> ⚠️ 注意：postcard 的 `i64` 是 ZigZag varint，**不是** u64 普通 varint（10 → `0x0a`）。
-> Node 端可用 wasm 的 `encode_i64`/`decode_i64` 原语；Python 端参考
-> `tests/test_e2e.py` 中的 `encode_i64`/`decode_i64` 实现。
+const builder = new ServerBuilder();
+builder.bind("0.0.0.0:5000");
+builder.addRpc("add", async (a, b) => a + b); // 自动解码参数、编码响应
+```
 
-跨端验证：`bash tools/e2e/cross_matrix.sh`（Rust ↔ Node ↔ Python 6 组合，全部 PASS）。
+### Python
+
+```python
+import echostream
+
+client = echostream.connect("127.0.0.1:5000")
+total = client.request("add", 10, 20)  # 30
+client.emit("hello", "world")
+
+builder = echostream.ServerBuilder()
+builder.bind("0.0.0.0:5000")
+builder.add_rpc("add", lambda a, b: a + b)
+```
+
+### Web（浏览器）
+
+```js
+import { EchoStream } from "./echostream.js";
+
+const client = new EchoStream("ws://192.168.1.100:8081");
+await client.connect();
+const sum = await client.request("add", 10, 20); // 30
+```
+
+## 底层 API
+
+各端保留手动字节的底层入口（`request_raw` / `emit_raw` / `native` 导出等），
+供高级场景使用；日常开发请使用自动编解码 API。
+
+## 测试
+
+```bash
+node bindings/node/test/codec.test.mjs      # Node 纯 JS 编解码 vs WASM 交叉验证
+node bindings/node/test/server.test.mjs     # Node server + client 闭环
+python3 bindings/python/tests/test_e2e.py   # Python server + client 闭环
+node scripts/cross_e2e.mjs                  # 跨端矩阵：Rust ↔ Node ↔ Python 6 组合
+```

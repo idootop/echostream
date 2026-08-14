@@ -112,6 +112,11 @@ impl Client {
             .add_rpc_handler(PyRpcHandler::new(name, callback));
     }
 
+    /// 注册流处理器（服务端推送，回调签名：`handler(receiver)`，receiver.recv() 拉帧）
+    fn add_stream(&self, name: &str, callback: Py<PyAny>) {
+        self.client.add_stream_handler(PyStreamHandler::new(name, callback));
+    }
+
     /// 关闭连接
     fn close(&self) {
         self.client.close();
@@ -129,7 +134,7 @@ impl Stream {
     /// 发送一帧
     fn send(&self, py: Python<'_>, payload: &[u8]) -> PyResult<()> {
         let mut stream = py.detach(|| runtime().block_on(self.inner.lock()));
-        py.detach(|| block_on(stream.send(Bytes::copy_from_slice(payload))))
+        py.detach(|| block_on(stream.send_raw(Bytes::copy_from_slice(payload))))
             .map_err(to_py_err)?
             .map_err(to_py_err)
     }
@@ -273,7 +278,7 @@ impl Server {
     /// 广播事件到所有连接客户端
     fn broadcast(&self, py: Python<'_>, name: &str, payload: &[u8]) -> PyResult<()> {
         let data = Bytes::copy_from_slice(payload);
-        py.detach(|| block_on(self.ctx.broadcast(name, &data)))
+        py.detach(|| block_on(self.ctx.broadcast_raw(name, data)))
             .map_err(to_py_err)?
             .map_err(to_py_err)
     }
@@ -436,7 +441,7 @@ impl DynRpcHandler for PyRpcHandler {
 // ======================== 模块注册 ========================
 
 #[pymodule]
-#[pyo3(name = "echostream")]
+#[pyo3(name = "_native")]
 fn echostream_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(connect, m)?)?;
     m.add_class::<Client>()?;

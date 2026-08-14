@@ -38,27 +38,27 @@ pub struct JsClient {
 impl JsClient {
     /// 发起 RPC 请求，返回响应载荷（postcard 字节）
     #[napi]
-    pub async fn request(&self, name: String, payload: Vec<u8>) -> napi::Result<Vec<u8>> {
-        let data = Bytes::from(payload);
+    pub async fn request(&self, name: String, payload: Uint8Array) -> napi::Result<Buffer> {
+        let data = Bytes::copy_from_slice(&payload);
         let resp: Bytes = self
             .client
             .request_raw(&name, data)
             .await
             .map_err(to_napi_err)?;
-        Ok(resp.to_vec())
+        Ok(Buffer::from(&resp[..]))
     }
 
     /// 发送单向事件
     #[napi]
-    pub async fn emit(&self, name: String, payload: Vec<u8>) -> napi::Result<()> {
-        let data = Bytes::from(payload);
+    pub async fn emit(&self, name: String, payload: Uint8Array) -> napi::Result<()> {
+        let data = Bytes::copy_from_slice(&payload);
         self.client.emit_raw(&name, data).await.map_err(to_napi_err)
     }
 
     /// 发送不可靠事件（数据报通道；连接不支持时返回错误）
     #[napi]
-    pub async fn emit_unreliable(&self, name: String, payload: Vec<u8>) -> napi::Result<()> {
-        let data = Bytes::from(payload);
+    pub async fn emit_unreliable(&self, name: String, payload: Uint8Array) -> napi::Result<()> {
+        let data = Bytes::copy_from_slice(&payload);
         self.client
             .emit_unreliable_raw(&name, data)
             .await
@@ -80,15 +80,22 @@ impl JsClient {
 
     /// 注册事件监听（回调收到事件载荷 Buffer）
     #[napi]
-    pub fn on_event(&self, name: String, callback: ThreadsafeFunction<Vec<u8>>) {
-        let handler = JsEventCallback {
-            name: name.clone(),
-            callback,
-        };
-        // 客户端事件处理器注册：通过构建器重建成本高，直接注册到内部 router
-        // 使用 add_event 需要 ClientBuilder —— Client 内部 router 不可变，这里
-        // 采用 Runtime 注册方式：core Client 提供 on_event 注册。
-        self.client.add_event_handler(handler);
+    pub fn on_event(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
+        self.client
+            .add_event_handler(JsEventCallback { name, callback });
+    }
+
+    /// 注册 RPC 处理器（处理服务端主动调用；回调：payload Buffer -> Buffer / Promise<Buffer>）
+    #[napi]
+    pub fn on_rpc(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
+        self.client.add_rpc_handler(JsRpcHandler { name, callback });
+    }
+
+    /// 注册流处理器（服务端推送；回调：receiver 句柄）
+    #[napi]
+    pub fn on_stream(&self, name: String, callback: ThreadsafeFunction<JsStreamReceiver>) {
+        self.client
+            .add_stream_handler(JsStreamHandler { name, callback });
     }
 
     /// 关闭连接
@@ -101,7 +108,7 @@ impl JsClient {
 /// 事件回调适配（ThreadsafeFunction → EventHandler）
 struct JsEventCallback {
     name: String,
-    callback: ThreadsafeFunction<Vec<u8>>,
+    callback: ThreadsafeFunction<Buffer>,
 }
 
 #[async_trait::async_trait]
@@ -112,7 +119,7 @@ impl DynEventHandler for JsEventCallback {
 
     async fn handle_encoded(&self, _session: &Session, data: Bytes) -> echostream::Result<()> {
         self.callback
-            .call_async::<()>(Ok(data.to_vec()))
+            .call_async::<()>(Ok(Buffer::from(&data[..])))
             .await
             .map_err(|e| echostream::Error::Io(e.to_string()))?;
         Ok(())
@@ -129,9 +136,9 @@ pub struct JsStream {
 impl JsStream {
     /// 发送一帧
     #[napi]
-    pub async fn send(&self, payload: Vec<u8>) -> napi::Result<()> {
+    pub async fn send(&self, payload: Uint8Array) -> napi::Result<()> {
         let mut stream = self.inner.lock().await;
-        stream.send(Bytes::from(payload)).await.map_err(to_napi_err)
+        stream.send_raw(Bytes::copy_from_slice(&payload)).await.map_err(to_napi_err)
     }
 
     /// 关闭流
@@ -147,7 +154,7 @@ impl JsStream {
 /// Node 侧 RPC 处理器（JS 回调：payload Buffer → 返回 Buffer / Promise<Buffer>）
 struct JsRpcHandler {
     name: String,
-    callback: ThreadsafeFunction<Vec<u8>>,
+    callback: ThreadsafeFunction<Buffer>,
 }
 
 #[async_trait::async_trait]
@@ -163,7 +170,7 @@ impl DynRpcHandler for JsRpcHandler {
     ) -> echostream::Result<Bytes> {
         let resp: Promise<Buffer> = self
             .callback
-            .call_async::<Promise<Buffer>>(Ok(payload.to_vec()))
+            .call_async::<Promise<Buffer>>(Ok(Buffer::from(&payload[..])))
             .await
             .map_err(|e| echostream::Error::Io(e.to_string()))?;
         let buf: Buffer = resp
@@ -176,7 +183,7 @@ impl DynRpcHandler for JsRpcHandler {
 /// Node 侧事件处理器（JS 回调：payload Buffer → 无返回值）
 struct JsEventHandler {
     name: String,
-    callback: ThreadsafeFunction<Vec<u8>>,
+    callback: ThreadsafeFunction<Buffer>,
 }
 
 #[async_trait::async_trait]
@@ -187,7 +194,7 @@ impl DynEventHandler for JsEventHandler {
 
     async fn handle_encoded(&self, _session: &Session, payload: Bytes) -> echostream::Result<()> {
         self.callback
-            .call_async::<()>(Ok(payload.to_vec()))
+            .call_async::<()>(Ok(Buffer::from(&payload[..])))
             .await
             .map_err(|e| echostream::Error::Io(e.to_string()))?;
         Ok(())
@@ -228,11 +235,11 @@ pub struct JsStreamReceiver {
 impl JsStreamReceiver {
     /// 读取下一帧载荷；流结束返回 null
     #[napi]
-    pub async fn recv(&self) -> napi::Result<Option<Vec<u8>>> {
+    pub async fn recv(&self) -> napi::Result<Option<Buffer>> {
         let mut guard = self.inner.lock().await;
         if let Some(recv) = guard.as_mut() {
             match recv.recv_frame().await.map_err(to_napi_err)? {
-                Some(frame) => Ok(Some(frame.data.to_vec())),
+                Some(frame) => Ok(Some(Buffer::from(&frame.data[..]))),
                 None => Ok(None),
             }
         } else {
@@ -270,9 +277,9 @@ impl JsServer {
 
     /// 广播事件到所有连接客户端
     #[napi]
-    pub async fn broadcast(&self, name: String, payload: Vec<u8>) -> napi::Result<()> {
+    pub async fn broadcast(&self, name: String, payload: Uint8Array) -> napi::Result<()> {
         self.ctx
-            .broadcast(&name, &Bytes::from(payload))
+            .broadcast_raw(&name, Bytes::copy_from_slice(&payload))
             .await
             .map_err(to_napi_err)
     }
@@ -316,20 +323,20 @@ impl JsSession {
 
     /// 主动调用客户端 RPC
     #[napi]
-    pub async fn request(&self, name: String, payload: Vec<u8>) -> napi::Result<Vec<u8>> {
+    pub async fn request(&self, name: String, payload: Uint8Array) -> napi::Result<Buffer> {
         let resp: Bytes = self
             .session
-            .request_raw(&name, Bytes::from(payload))
+            .request_raw(&name, Bytes::copy_from_slice(&payload))
             .await
             .map_err(to_napi_err)?;
-        Ok(resp.to_vec())
+        Ok(Buffer::from(&resp[..]))
     }
 
     /// 向客户端发送事件
     #[napi]
-    pub async fn emit(&self, name: String, payload: Vec<u8>) -> napi::Result<()> {
+    pub async fn emit(&self, name: String, payload: Uint8Array) -> napi::Result<()> {
         self.session
-            .emit_raw(&name, Bytes::from(payload))
+            .emit_raw(&name, Bytes::copy_from_slice(&payload))
             .await
             .map_err(to_napi_err)
     }
@@ -375,13 +382,13 @@ impl JsServerBuilder {
 
     /// 注册 RPC 处理器（回调：payload Buffer → Buffer / Promise<Buffer>）
     #[napi]
-    pub fn add_rpc(&self, name: String, callback: ThreadsafeFunction<Vec<u8>>) {
+    pub fn add_rpc(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
         self.router.add_rpc(JsRpcHandler { name, callback });
     }
 
     /// 注册事件处理器（回调：payload Buffer）
     #[napi]
-    pub fn add_event(&self, name: String, callback: ThreadsafeFunction<Vec<u8>>) {
+    pub fn add_event(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
         self.router.add_event(JsEventHandler { name, callback });
     }
 

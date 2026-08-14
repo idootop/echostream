@@ -186,10 +186,10 @@ export class EchoStream {
 
   // ======================== Event ========================
 
-  /** 注册事件监听（载荷自动解码） */
+  /** 注册事件监听（载荷自动解码；元组载荷按参数展开） */
   onEvent(name, handler) {
     this.core.on_event(name, (eventName, data) => {
-      handler(decodePayload(data), eventName);
+      handler(...spreadArgs(data));
     });
   }
 
@@ -220,7 +220,7 @@ export class EchoStream {
       const h = this._rpcHandlers.get(rpcName);
       if (!h) return null;
       try {
-        const result = h(decodePayload(data), rpcName);
+        const result = h(...spreadArgs(data));
         if (result === undefined) return null; // 无响应
         Promise.resolve(result)
           .then((value) => this._sendResponse(id, value))
@@ -404,6 +404,13 @@ function decodeArgs(bytes, decode) {
 
 function decodePayload(bytes, schema) {
   return decode_payload(bytes, schema === undefined ? undefined : schema);
+}
+
+/** 解码并按元组约定展开为多参数（空载荷 -> 无参数） */
+function spreadArgs(bytes) {
+  const decoded = decodePayload(bytes);
+  if (decoded === undefined || decoded === null) return [];
+  return Array.isArray(decoded) ? decoded : [decoded];
 }
 
 // ======================== 入站流接收器 ========================
