@@ -4,8 +4,8 @@ use std::net::SocketAddr;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use echostream_core::{Endpoint, FrameIo, FrameRead, encode_message, read_message_frame};
 use echostream_proto::{Error, Message, Result};
-use echostream_transport::{Endpoint, FrameIo, FrameRead, encode_message, read_message_frame};
 
 /// wtransport 连接适配（实现 `Endpoint`，可直接用于 `Session`）
 #[derive(Clone)]

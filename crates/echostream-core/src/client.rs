@@ -230,7 +230,7 @@ impl ClientBuilder {
             .ok_or_else(|| {
                 echostream_proto::Error::InvalidParameter("无法解析服务端地址".into())
             })?;
-        let conn = echostream_transport::connect(addr).await?;
+        let conn = crate::quic::connect(addr).await?;
         Ok(self.from_endpoint(Arc::new(conn)))
     }
 }

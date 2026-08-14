@@ -5,7 +5,7 @@
 - [ ] `cargo clippy --all-features` 零警告
 - [ ] `cargo build` 通过；CI 全绿（fmt / clippy / 示例冒烟 / WASM 验证 / Node E2E）
 - [ ] 回归：`cargo run -p echostream --example simple_rpc` 输出"全部完成"
-- [ ] `node sdk/web/echostream.test.mjs`、`node sdk/web/client_core.test.mjs` 通过
+- [ ] `node bindings/web/echostream.test.mjs`、`node bindings/web/client_core.test.mjs` 通过
 - [ ] `node bindings/node/test/server.test.cjs` 通过
 - [ ] `python3 bindings/python/tests/test_e2e.py` 通过
 - [ ] 版本号统一：workspace `Cargo.toml`（0.1.0）、`bindings/node/package.json`、`bindings/python/pyproject.toml`
@@ -16,8 +16,7 @@
 # 需要 crates.io API token：cargo login
 cargo publish -p echostream-proto
 cargo publish -p echostream-client-core
-cargo publish -p echostream-transport
-cargo publish -p echostream-core
+cargo publish -p echostream-core          # 含内置 QUIC 传输
 cargo publish -p echostream-derive
 cargo publish -p echostream-discovery
 cargo publish -p echostream-web
@@ -55,11 +54,11 @@ maturin publish                    # 或 maturin build --release --out dist 后 
 
 ```bash
 cargo build -p echostream-wasm --target wasm32-unknown-unknown --release
-wasm-bindgen --target web --out-dir sdk/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+wasm-bindgen --target web --out-dir bindings/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
 wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
 ```
 
-Web SDK（`sdk/web/`）随仓库分发或单独 npm 包（`echostream-web`）。
+Web SDK（`bindings/web/`）随仓库分发或单独 npm 包（`echostream-web`）。
 
 ## 5. 发布后验证
 

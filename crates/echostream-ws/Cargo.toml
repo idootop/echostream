@@ -13,7 +13,6 @@ description = "WebSocket 服务端端点：局域网 Web 端零证书通信"
 
 [dependencies]
 echostream-proto = { workspace = true }
-echostream-transport = { workspace = true }
 postcard = { workspace = true }
 echostream-core = { workspace = true }
 bytes = { workspace = true }

@@ -70,7 +70,7 @@ impl ClientPlugin for ReconnectPlugin {
                             return;
                         }
                     };
-                    match echostream_transport::connect(socket).await {
+                    match echostream_core::quic::connect(socket).await {
                         Ok(conn) => {
                             tracing::info!(%addr, attempt, "重连成功");
                             client.reconnect(Arc::new(conn));

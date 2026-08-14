@@ -134,8 +134,8 @@ echostream-proto (本模块)
 ```
 
 被以下模块依赖:
-- `echostream-transport` - 传输层封装
-- `echostream-core` - 核心抽象层
+- `echostream-core` - 核心框架（含内置 QUIC 传输）
+- `echostream-ws` / `echostream-web` - 其它传输实现
 - `echostream-derive` - 过程宏
 - `echostream-discovery` - 服务发现
 

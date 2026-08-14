@@ -1,4 +1,7 @@
-//! QUIC 连接封装：端点、连接、流与消息帧编解码
+//! 内置 QUIC 传输（quinn 封装）：端点、连接、流与消息帧编解码
+//!
+//! 由 `echostream-transport` 合并而来：QUIC 是默认主传输，随核心框架开箱即用；
+//! WebSocket / WebTransport 作为同级传输实现独立分包（`echostream-ws` / `echostream-web`）。
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -12,7 +15,9 @@ pub use echostream_proto::endpoint::{
 use echostream_proto::{Error, Message, Result};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 
-use crate::cert;
+mod cert;
+
+use cert::{insecure_client_config, self_signed};
 
 // ======================== 错误转换 ========================
 
@@ -117,7 +122,7 @@ pub struct QuicEndpoint {
 impl QuicEndpoint {
     /// 绑定监听地址，自动生成自签名证书（开发环境开箱即用）
     pub async fn bind(addr: impl ToSocketAddrs) -> Result<Self> {
-        let (certs, key) = cert::self_signed()?;
+        let (certs, key) = self_signed()?;
         Self::bind_with_cert(addr, certs, key).await
     }
 
@@ -387,7 +392,7 @@ impl FrameIo for UniRecv {
 pub async fn connect(addr: SocketAddr) -> Result<QuicConn> {
     ensure_crypto_provider();
 
-    let tls = cert::insecure_client_config()?;
+    let tls = insecure_client_config()?;
     let quic_config = quinn::crypto::rustls::QuicClientConfig::try_from(tls)
         .map_err(|e| Error::Io(e.to_string()))?;
     let mut client_config = quinn::ClientConfig::new(Arc::new(quic_config));

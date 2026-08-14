@@ -7,7 +7,6 @@ description = "EchoStream 重连插件：客户端断线自动重连（指数退
 
 [dependencies]
 tokio = { workspace = true }
-echostream-core = { workspace = true }
-echostream-transport = { workspace = true }
+echostream-core = { workspace = true, features = ["quic"] }
 echostream-proto = { workspace = true }
 tracing = { workspace = true }

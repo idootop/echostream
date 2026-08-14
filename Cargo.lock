@@ -320,9 +320,12 @@ dependencies = [
  "async-trait",
  "bytes",
  "echostream-proto",
- "echostream-transport",
  "futures",
  "postcard",
+ "quinn",
+ "rcgen",
+ "rustls",
+ "rustls-pki-types",
  "serde",
  "tokio",
  "tracing",
@@ -391,7 +394,6 @@ version = "0.1.0"
 dependencies = [
  "echostream-core",
  "echostream-proto",
- "echostream-transport",
  "tokio",
  "tracing",
 ]
@@ -432,23 +434,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "echostream-transport"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "echostream-proto",
- "postcard",
- "quinn",
- "rcgen",
- "rustls",
- "rustls-pki-types",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "echostream-wasm"
 version = "0.1.0"
 dependencies = [
@@ -469,7 +454,6 @@ dependencies = [
  "echostream",
  "echostream-core",
  "echostream-proto",
- "echostream-transport",
  "postcard",
  "rcgen",
  "serde",
@@ -489,7 +473,6 @@ dependencies = [
  "echostream",
  "echostream-core",
  "echostream-proto",
- "echostream-transport",
  "futures-util",
  "postcard",
  "tokio",

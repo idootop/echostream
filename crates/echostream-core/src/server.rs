@@ -313,7 +313,7 @@ impl ServerBuilder {
                 let addr = self.quic_addr.ok_or_else(|| {
                     echostream_proto::Error::InvalidParameter("未指定监听器或监听地址".into())
                 })?;
-                Arc::new(echostream_transport::QuicEndpoint::bind(addr).await?) as Arc<dyn Listener>
+                Arc::new(crate::quic::QuicEndpoint::bind(addr).await?) as Arc<dyn Listener>
             }
         };
         #[cfg(not(feature = "quic"))]

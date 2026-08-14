@@ -3,7 +3,6 @@ members = [
     "crates/echostream",
     "crates/echostream-core",
     "crates/echostream-proto",
-    "crates/echostream-transport",
     "crates/echostream-derive",
     "crates/echostream-discovery",
     "crates/echostream-client-core",
@@ -39,7 +38,6 @@ echostream = { path = "crates/echostream", version = "0.1.0" }
 echostream-client-core = { path = "crates/echostream-client-core", version = "0.1.0" }
 echostream-core = { path = "crates/echostream-core", version = "0.1.0" }
 echostream-proto = { path = "crates/echostream-proto", version = "0.1.0" }
-echostream-transport = { path = "crates/echostream-transport", version = "0.1.0" }
 echostream-derive = { path = "crates/echostream-derive", version = "0.1.0" }
 echostream-discovery = { path = "crates/echostream-discovery", version = "0.1.0" }
 

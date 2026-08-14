@@ -1,8 +1,8 @@
 //! 传输抽象：连接/流接口与帧编解码
 //!
 //! 框架核心与具体传输（QUIC / WebSocket / WebTransport）解耦：
-//! 本模块定义接口，各传输 crate（echostream-transport / echostream-ws /
-//! echostream-web）实现，实现同一套帧协议（长度前缀 + postcard Message）。
+//! 本模块定义接口，各传输实现（core 内置 QUIC / echostream-ws /
+//! echostream-web）遵循同一套帧协议（长度前缀 + postcard Message）。
 //! 零运行时依赖（无 tokio / quinn）。
 
 use std::net::SocketAddr;

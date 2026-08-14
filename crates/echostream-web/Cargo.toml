@@ -15,7 +15,7 @@ description = "WebTransport 服务端与浏览器客户端支持"
 echostream-proto = { workspace = true }
 postcard = { workspace = true }
 echostream-core = { workspace = true }
-echostream-transport = { workspace = true }
+
 
 wtransport = "0.7"
 tokio = { workspace = true }

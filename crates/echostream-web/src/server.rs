@@ -63,7 +63,7 @@ impl WebServer {
                     };
                     let session = Session::new(
                         self.ctx.next_session_id(),
-                        Arc::new(WtConn::new(conn)) as Arc<dyn echostream_transport::Endpoint>,
+                        Arc::new(WtConn::new(conn)) as Arc<dyn echostream_core::Endpoint>,
                         self.ctx.clone(),
                     );
                     self.ctx.register_session(session.clone());

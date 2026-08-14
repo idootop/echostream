@@ -9,11 +9,10 @@ homepage.workspace = true
 documentation.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "核心框架：RPC / Event / Stream 调度、会话管理与服务端客户端实现"
+description = "核心框架：RPC / Event / Stream 调度、会话管理、服务端客户端与内置 QUIC 传输"
 
 [dependencies]
 echostream-proto = { workspace = true }
-echostream-transport = { workspace = true, optional = true }
 tokio = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
@@ -22,6 +21,12 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"
 
+# 内置 QUIC 传输（feature = "quic"，默认开启）
+quinn = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pki-types = { workspace = true, optional = true }
+rcgen = { workspace = true, optional = true }
+
 [features]
 default = ["quic"]
-quic = ["dep:echostream-transport"]
+quic = ["dep:quinn", "dep:rustls", "dep:rustls-pki-types", "dep:rcgen"]

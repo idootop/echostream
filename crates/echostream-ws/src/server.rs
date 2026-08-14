@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
+use echostream_core::{Endpoint, FrameIo};
 use echostream_core::{
     ServerContext, Session,
     handler::{DynEventHandler, DynRpcHandler, StreamHandler},
@@ -17,7 +18,6 @@ use echostream_core::{
     router::Router,
 };
 use echostream_proto::{Error, Message, Result};
-use echostream_transport::{Endpoint, FrameIo};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
