@@ -68,14 +68,14 @@ impl RpcChannel {
                 Ok(Some(m)) => m,
                 Ok(None) | Err(_) => break,
             };
-            if let Message::Response(resp) = msg {
-                if let Some(tx) = self.pending.write().unwrap().remove(&resp.id) {
-                    let _ = tx.send(if resp.code.is_success() {
-                        Ok(resp.data)
-                    } else {
-                        Err(Error::Rpc(resp.code.0, resp.message.unwrap_or_default()))
-                    });
-                }
+            if let Message::Response(resp) = msg
+                && let Some(tx) = self.pending.write().unwrap().remove(&resp.id)
+            {
+                let _ = tx.send(if resp.code.is_success() {
+                    Ok(resp.data)
+                } else {
+                    Err(Error::Rpc(resp.code.0, resp.message.unwrap_or_default()))
+                });
             }
         }
         // 通道关闭：唤醒所有等待中的请求

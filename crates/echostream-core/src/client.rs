@@ -41,7 +41,13 @@ struct ClientInner {
 impl Client {
     /// 主会话快照（连接池首连接，可发起双向调用）
     pub fn session(&self) -> Session {
-        self.inner.sessions.read().unwrap().get(0).cloned().unwrap()
+        self.inner
+            .sessions
+            .read()
+            .unwrap()
+            .first()
+            .cloned()
+            .unwrap()
     }
 
     /// 会话数（连接池大小）
@@ -53,7 +59,7 @@ impl Client {
     fn pick(&self) -> Session {
         let sessions = self.inner.sessions.read().unwrap();
         if sessions.len() <= 1 {
-            return sessions.get(0).cloned().unwrap();
+            return sessions.first().cloned().unwrap();
         }
         let idx = self.inner.next_session.fetch_add(1, Ordering::Relaxed) % sessions.len();
         sessions.get(idx).cloned().unwrap()
@@ -66,8 +72,8 @@ impl Client {
         let (ctx, timeout) = {
             let guard = self.inner.sessions.read().unwrap();
             (
-                guard.get(0).unwrap().ctx().clone(),
-                guard.get(0).unwrap().timeout(),
+                guard.first().unwrap().ctx().clone(),
+                guard.first().unwrap().timeout(),
             )
         };
         self.inner.closed.store(false, Ordering::Relaxed);

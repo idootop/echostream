@@ -1,77 +1,71 @@
 # echostream-node
 
-EchoStream 的 Node.js 绑定（napi-rs）—— 基于 QUIC 的高性能双向 RPC / Event / Stream 框架。
+EchoStream 的 Node.js 绑定（napi-rs，ESM）—— 基于 QUIC 的高性能双向 RPC / Event / Stream 框架。
 
-完整 client + server 能力，与 Rust 核心共享同一份实现。
+完整 client + server 能力，与 Rust 核心共享同一份实现；**载荷自动编解码**（纯 JS postcard 实现，
+与 WASM 字节级交叉验证），业务侧无需手写任何字节。
 
 ## 安装与构建
 
 ```bash
-# 构建原生模块（需要 Rust 工具链）
 cargo build -p echostream-node --release
 cp target/release/libechostream_node.dylib bindings/node/echostream-node.node   # macOS
 # Linux: cp target/release/libechostream_node.so bindings/node/echostream-node.node
-
-npm install   # 或直接 require 本目录
-```
-
-## 服务端
-
-```js
-const { ServerBuilder } = require("echostream-node");
-
-const builder = new ServerBuilder();
-builder.bind("0.0.0.0:5000");
-
-// 回调遵循 Node error-first 约定：(err, data) => ...
-builder.addRpc("add", async (err, payload) => {
-  const sum = /* 解码载荷并计算 */;
-  return Buffer.from(/* 编码响应 */);
-});
-builder.addEvent("hello", (err, payload) => console.log("事件:", payload));
-builder.addStream("chat", async (err, receiver) => {
-  while ((frame = await receiver.recv()) !== null) { /* 处理流帧 */ }
-});
-
-const server = await builder.build();
-server.run();          // 后台运行
-server.shutdown();     // 优雅关闭
 ```
 
 ## 客户端
 
 ```js
-const { connect } = require("echostream-node");
+import { connect } from "echostream-node";
 
 const client = await connect("127.0.0.1:5000");
-const resp = await client.request("add", Buffer.from(...));
-await client.emit("hello", Buffer.from(...));
+const sum = await client.request("add", 10, 20);   // 30，自动编解码
+await client.emit("hello", "world");
+client.onEvent("hello", (data) => console.log(data));
+client.onRpc("ping", async () => "pong");          // 双向通信
+
 const stream = await client.createStream("chat");
-await stream.send(Buffer.from(...));
+await stream.send("hi");
 await stream.finish();
 client.close();
 ```
 
-## 载荷约定
+## 服务端
 
-所有 RPC / Event / Stream 载荷为 **postcard 编码字节**（与 Rust 线缆格式一致），
-可用 `sdk/web/wasm` 的编解码模块或 `echostream`（WASM）生成。
+```js
+import { ServerBuilder } from "echostream-node";
+
+const builder = new ServerBuilder();
+builder.bind("0.0.0.0:5000");
+builder.addRpc("add", async (a, b) => a + b);        // 参数自动解码、返回值自动编码
+builder.addEvent("hello", (data) => console.log(data));
+builder.addStream("chat", async (receiver) => {
+  let frame;
+  while ((frame = await receiver.recv()) !== null) console.log(frame);
+});
+
+const server = await builder.build();
+await server.run();
+```
+
+## 编解码约定
+
+整数 → i64 ZigZag varint；BigInt → u64 varint；浮点 → f64；布尔 → 单字节；
+字符串/字节 → 长度前缀；数组/多参数 → 元组字段序；对象 → 结构体字段序。
+解码默认智能推断；歧义场景传选项：`client.request("get", { id: 1 }, { decode: { id: "number" } })`。
+
+底层手动字节 API 通过 `nativeApi` 导出。
 
 ## 测试
 
 ```bash
-node test/index.test.cjs    # client 端到端（需 chat_server 示例）
-node test/server.test.cjs   # server + client 进程内闭环
+npm test                 # codec 交叉验证 + server/client 闭环
+npm run test:cross       # 跨端矩阵（需 Rust/Python 对端）
 ```
 
 ## 示例
 
-两个进程演示完整链路（先开服务端，再开客户端）：
-
 ```bash
-# 终端 1：服务端（监听 127.0.0.1:5101，Ctrl+C 优雅退出）
-node examples/server.cjs
-
-# 终端 2：客户端（调用 add、发送事件、推送流后退出）
-node examples/client.cjs
+node examples/server.mjs   # 终端 1
+node examples/client.mjs   # 终端 2
 ```

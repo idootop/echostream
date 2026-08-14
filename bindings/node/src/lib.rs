@@ -1,7 +1,7 @@
 //! EchoStream Node.js binding（napi-rs）
 //!
-//! 载荷约定：所有 RPC/Event/Stream 载荷均为 postcard 编码字节（Buffer），
-//! 与 Rust 侧线缆格式一致，Node 端可复用 `sdk/web/postcard.js` 编解码。
+//! 载荷约定：所有 RPC/Event/Stream 载荷均为 postcard 编码字节（Buffer）。
+//! 自动编解码由 JS 层完成（bindings/node/postcard.js，与 WASM 字节级交叉验证）。
 
 use std::sync::Arc;
 

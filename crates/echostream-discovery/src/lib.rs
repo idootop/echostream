@@ -122,8 +122,26 @@ pub fn discover_stream(name: &str) -> impl tokio_stream::Stream<Item = ServiceIn
 
 // ======================== 内部辅助 ========================
 
-/// 获取本机 IPv4 地址（UDP 探测，不实际发包）
+/// 获取本机 IPv4 地址
+///
+/// 优先遍历真实网卡（跳过回环与代理工具 fake-IP 段 198.18.0.0/15，如 Surge/Clash
+/// 的假 IP 模式会劫持默认路由导致 UDP 探测拿到虚拟地址）；全部失败时回退 UDP 探测。
 fn local_ipv4() -> Result<IpAddr> {
+    if let Ok(ifaces) = if_addrs::get_if_addrs() {
+        for iface in ifaces {
+            if iface.is_loopback() {
+                continue;
+            }
+            if let IpAddr::V4(ip) = iface.ip() {
+                let o = ip.octets();
+                if (o[0] == 198 && (o[1] == 18 || o[1] == 19)) || o[0] == 169 && o[1] == 254 {
+                    continue; // fake-IP 段 / 链路本地
+                }
+                return Ok(IpAddr::V4(ip));
+            }
+        }
+    }
+    // 回退：UDP 探测（不实际发包）
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| Error::Io(e.to_string()))?;
     socket
         .connect("8.8.8.8:80")

@@ -10,7 +10,7 @@ env:
 
 jobs:
   check:
-    name: Rust Check & Clippy
+    name: Rust Check & Clippy & Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,13 +21,11 @@ jobs:
       - name: Format check
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --all-features -- -D warnings
-      - name: Build
-        run: cargo build
-      - name: 单元与集成测试（proto 编解码 + core 框架）
-        run: cargo test -p echostream-proto -p echostream-core
+        run: cargo clippy --workspace --exclude echostream-python --exclude echostream-node --all-targets -- -D warnings
+      - name: 单元与集成测试
+        run: cargo test -p echostream-proto -p echostream-core -p echostream-client-core
       - name: 示例冒烟（RPC/Event/Stream 端到端）
-        run: cargo run -p echostream --example simple_rpc
+        run: cargo run -p echostream --example simple_rpc && cargo run -p echostream --example bidi
       - name: 插件栈冒烟（认证/重连/日志）
         run: cargo run -p echostream --example plugin_stack
 
@@ -49,10 +47,13 @@ jobs:
         run: |
           cargo install wasm-bindgen-cli --version 0.2.106 --locked
           wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+          wasm-bindgen --target web --out-dir bindings/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
       - name: 编解码交叉验证
         run: node bindings/web/echostream.test.mjs
       - name: 客户端状态机验证
         run: node bindings/web/client_core.test.mjs
+      - name: Node 纯 JS 编解码 vs WASM 交叉验证
+        run: node bindings/node/test/codec.test.mjs
 
   bindings:
     name: Node.js binding 端到端
@@ -68,5 +69,7 @@ jobs:
         run: |
           cargo build -p echostream-node --release
           cp target/release/libechostream_node.so bindings/node/echostream-node.node
-      - name: 端到端测试（server + client 闭环）
-        run: node bindings/node/test/server.test.cjs
+      - name: 端到端测试（server + client 闭环，自动编解码 DX）
+        run: node bindings/node/test/server.test.mjs
+      - name: 浏览器 SDK 端到端（Rust WS 服务端）
+        run: node bindings/web/e2e.sdk.test.mjs

@@ -2,13 +2,31 @@
 
 EchoStream 的 Python 绑定（PyO3）—— 基于 QUIC 的高性能双向 RPC / Event / Stream 框架。
 
-完整 client + server 能力，与 Rust 核心共享同一份实现。
+完整 client + server 能力，与 Rust 核心共享同一份实现；**载荷自动编解码**（纯 Python postcard 实现），
+业务侧直接传 Python 原生值。
 
 ## 安装
 
 ```bash
 maturin build --release
 pip install target/wheels/echostream-*.whl
+```
+
+## 客户端
+
+```python
+import echostream
+
+client = echostream.connect("127.0.0.1:5000")
+total = client.request("add", 10, 20)      # 30，自动编解码
+client.emit("hello", "world")
+client.on_event("hello", lambda data: print(data))
+client.on_rpc("ping", lambda: "pong")      # 双向通信
+
+stream = client.create_stream("chat")
+stream.send("hi")
+stream.finish()
+client.close()
 ```
 
 ## 服务端
@@ -18,51 +36,25 @@ import echostream
 
 builder = echostream.ServerBuilder()
 builder.bind("0.0.0.0:5000")
-
-def handle_add(data: bytes) -> bytes:
-    return encode_u64(decode_u64(data[:1]) + decode_u64(data[1:2]))
-
-builder.add_rpc("add", handle_add)
-builder.add_event("hello", lambda data: print("事件:", data))
-builder.add_stream("chat", lambda receiver: ...)  # receiver.recv() 拉帧
+builder.add_rpc("add", lambda a, b: a + b)   # 参数自动解码、返回值自动编码
+builder.add_event("hello", lambda data: print(data))
+builder.add_stream("chat", lambda receiver: ...)  # receiver.recv() 自动解码
 
 server = builder.build()
-# 在独立线程运行（run 阻塞直到 shutdown）
-import threading
-threading.Thread(target=server.run, daemon=True).start()
+server.run()  # 阻塞；请在独立线程运行，另线程 shutdown
 ```
 
-## 客户端
+## 编解码约定
 
-```python
-client = echostream.connect("127.0.0.1:5000")
-resp = client.request("add", b"\x0a\x14")   # postcard 编码的 (10, 20)
-client.emit("hello", b"world")
-stream = client.create_stream("chat")
-stream.send(b"frame-1")
-stream.finish()
-client.close()
-```
+int → i64 ZigZag varint（超出 i64 范围的非负 int → u64 varint）；float → f64；
+bool → 单字节；str/bytes → 长度前缀；list/tuple → 元组字段序；dict → 结构体字段序。
+解码默认智能推断；歧义场景传 schema：`client.request("get", {"id": 1}, decode={"id": "number"})`。
 
-## 载荷约定
-
-所有载荷为 **postcard 编码字节**（与 Rust 线缆格式一致，varint 编码）。
-同步 API：内部使用 tokio runtime；阻塞期间自动释放 GIL，线程安全。
+底层手动字节 API 通过 `echostream.native` 访问。
 
 ## 测试
 
 ```bash
-python tests/test_e2e.py   # server + client 进程内闭环
-```
-
-## 示例
-
-两个进程演示完整链路（先开服务端，再开客户端）：
-
-```bash
-# 终端 1：服务端（监听 127.0.0.1:5102，Ctrl+C 优雅退出）
-python3 examples/server.py
-
-# 终端 2：客户端（调用 add、发送事件、推送流后退出）
-python3 examples/client.py
+python3 tests/test_e2e.py   # server + client 闭环
+python3 tests/cross_server.py [端口]  # 跨端矩阵对端
 ```

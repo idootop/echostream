@@ -16,4 +16,5 @@ echostream-proto = { workspace = true }
 
 mdns-sd = { workspace = true }
 tokio = { workspace = true }
+if-addrs = "0.15"
 tokio-stream = "0.1.19"

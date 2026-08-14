@@ -28,11 +28,11 @@
 2. 域名解析到公网 IP，Let's Encrypt 签发证书（`certbot certonly --standalone`）
 3. 本地启动 `web_chat_server` 加载公网证书（`ECHO_CERT`/`ECHO_KEY` 环境变量已支持）
 4. UDP 端口转发到本地（frp UDP 模式 / ngrok TCP+UDP 等）
-5. 运行 `tools/e2e/e2e.mjs`（URL 改为公网域名）—— 此时浏览器走标准公网 PKI，应直接通过
+5. 浏览器打开 `https://公网域名/e2e.html`（本地静态服务见方案 B 第 4 步）—— 此时浏览器走标准公网 PKI，应直接通过
 
 ### 方案 B：Safari 手动验证（免费，需 macOS 26.4+）
 
-1. 生成 CA 并签发证书：`tools/e2e/e2e-firefox.mjs` 中的 openssl 步骤（或 `target/e2e-ca/` 已有）
+1. 生成 CA 并签发证书（openssl 步骤见下）
 2. 导入 CA 到钥匙串：`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db target/e2e-ca/ca.pem`
 3. 启动服务端：`cargo run -p echostream-web --example web_chat_server --release`（默认自签）或加载 CA 证书
 4. Safari 打开 `http://127.0.0.1:8080/e2e.html`（`python3 -m http.server 8080 --directory bindings/web`）
@@ -46,8 +46,7 @@
 
 ## 自动化脚本
 
-- `tools/e2e/e2e.mjs`：Playwright Chromium（公网证书环境可用）
-- `tools/e2e/e2e-firefox.mjs`：Playwright Firefox（私有 CA + pref 方案，结论：受 HTTP/3 公网 CA 策略限制）
+> 旧版 Playwright 自动化脚本（tools/e2e）已随仓库清理：受浏览器证书策略限制（下表），
 
 ## 排查记录（避免重复踩坑）
 

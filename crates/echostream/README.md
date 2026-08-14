@@ -11,24 +11,41 @@
 use echostream::prelude::*;
 
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (u64, u64)) -> Result<u64> {
+async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 服务端
     let server = ServerBuilder::new()
         .bind("0.0.0.0:5000")
         .add_rpc(Add)
-        .serve()
+        .build()
         .await?;
+    tokio::spawn(async move { server.run().await });
 
-    // 客户端（同一进程或另一进程）
     let client = ClientBuilder::new().connect("127.0.0.1:5000").await?;
-    let sum: u64 = client.request("add", &(10, 20)).await?;
+    let sum: i64 = client.request("add", &(10, 20)).await?;
+    println!("add(10, 20) = {sum}"); // 30
     Ok(())
 }
 ```
 
-完整文档见仓库根目录 README；示例见 `crates/echostream/examples/`。
+## 能力
+
+- RPC / Event / Stream 三种通信模式，客户端与服务端双向主动通信
+- RPC 复用通道（高频小请求）+ 独立流（大载荷）+ 连接池（跨核扩展）
+- 事件复用通道（可靠）+ 数据报（不可靠，吞吐最高）
+- 强类型 Handler：`#[rpc]` / `#[event]` / `#[stream]` 自动编解码
+- 中间件（数据面）与插件（控制面）扩展机制
+- mDNS 局域网零配置服务发现（feature = "discovery"）
+
+## 特性
+
+- `derive`（默认）：`#[rpc]` / `#[event]` / `#[stream]` 过程宏
+- `discovery`（默认）：mDNS 服务发现
+
+## 多端
+
+Node（npm `echostream-node`）/ Python（PyPI `echostream`）/ Web（浏览器 SDK）
+与 Rust 共享同一协议核心，使用 API 均自动编解码，详见仓库 `bindings/README.md`。
