@@ -15,5 +15,6 @@ pub use endpoint::{
 };
 pub use error::{Error, Result};
 pub use message::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
+    EventMsg, Message, RPC_CHANNEL_NAME, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg,
+    StreamMsg, Timestamp,
 };

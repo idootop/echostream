@@ -96,10 +96,21 @@ impl ToEcho for quinn::SendDatagramError {
     }
 }
 
-/// 构造传输配置（启用 datagram 通道 + 保活）
+/// 构造传输配置（大窗口 + 高并发流 + datagram 通道 + 保活）
+///
+/// 默认 64KiB 流窗口会在大载荷（>64KiB）场景造成流控停顿（多次 RTT 往返），
+/// 并发流上限 100 会限制高并发 RPC；这里放宽到 16MiB / 8MiB / 4096 流。
 fn transport_config() -> Arc<quinn::TransportConfig> {
     let mut cfg = quinn::TransportConfig::default();
     cfg.keep_alive_interval(Some(Duration::from_secs(10)));
+    // 连接级与流级接收窗口（决定单流/单连接吞吐上限与大载荷延迟）
+    cfg.receive_window(16u32.checked_mul(1024 * 1024).unwrap().into());
+    cfg.stream_receive_window(8u32.checked_mul(1024 * 1024).unwrap().into());
+    cfg.send_window((16 * 1024 * 1024) as u64);
+    // 并发流上限（RPC 每请求一条流，默认 100 会卡高并发）
+    cfg.max_concurrent_bidi_streams(4096u32.into());
+    cfg.max_concurrent_uni_streams(4096u32.into());
+
     // quinn 0.11 的 datagram 上限 = datagram_receive_buffer_size（对端通告值）
     cfg.datagram_receive_buffer_size(Some(4096));
     cfg.datagram_send_buffer_size(4096);
@@ -314,13 +325,6 @@ pub struct BiStream {
 }
 
 impl BiStream {
-    /// 拆分为独立的发送端与接收端（并行读写）
-    pub fn split(self) -> (UniSend, UniRecv) {
-        (UniSend { send: self.send }, UniRecv { recv: self.recv })
-    }
-}
-
-impl BiStream {
     /// 原始接收端（底层访问）
     pub fn raw_recv(&self) -> &QuicRecv {
         &self.recv
@@ -341,6 +345,14 @@ impl FrameIo for BiStream {
 
     async fn finish(&mut self) -> Result<()> {
         self.send.finish().map_err(|_| Error::SessionClosed)
+    }
+
+    /// 拆分为独立的发送端与接收端（并行读写）
+    fn split(self: Box<Self>) -> Result<(Box<dyn FrameIo>, Box<dyn FrameIo>)> {
+        Ok((
+            Box::new(UniSend { send: self.send }),
+            Box::new(UniRecv { recv: self.recv }),
+        ))
     }
 }
 

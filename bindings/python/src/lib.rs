@@ -114,7 +114,8 @@ impl Client {
 
     /// 注册流处理器（服务端推送，回调签名：`handler(receiver)`，receiver.recv() 拉帧）
     fn add_stream(&self, name: &str, callback: Py<PyAny>) {
-        self.client.add_stream_handler(PyStreamHandler::new(name, callback));
+        self.client
+            .add_stream_handler(PyStreamHandler::new(name, callback));
     }
 
     /// 关闭连接

@@ -100,6 +100,115 @@ async fn main() -> Result<()> {
         );
     }
 
+    // ===== 2b. RPC 复用通道（muxed channel，100 并发 × 1000，64B） =====
+    {
+        let payload = vec![0u8; 64];
+        let start = Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let client = client.clone();
+            let payload = payload.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..PER_TASK {
+                    let _: bytes::Bytes = client
+                        .session()
+                        .request_muxed("echo64", Bytes::from(payload.clone()))
+                        .await?;
+                }
+                Ok::<(), echostream::Error>(())
+            }));
+        }
+        for t in tasks {
+            t.await.map_err(|e| Error::Io(e.to_string()))??;
+        }
+        let elapsed = start.elapsed();
+        let total = (CONCURRENCY as u64) * (PER_TASK as u64);
+        let qps = total as f64 / elapsed.as_secs_f64();
+        println!(
+            "[bench] 并发 RPC 吞吐（复用通道）: {qps:.0} req/s（{CONCURRENCY} 并发 × {PER_TASK}，64B）"
+        );
+    }
+
+    // ===== 2c. RPC 连接池（pool 4，100 并发 × 1000，64B） =====
+    {
+        let pool_client = ClientBuilder::new()
+            .pool(4)
+            .connect("127.0.0.1:5999")
+            .await?;
+        let payload = vec![0u8; 64];
+        let start = Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let client = pool_client.clone();
+            let payload = payload.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..PER_TASK {
+                    let _: Vec<u8> = client.request("echo64", &payload).await?;
+                }
+                Ok::<(), echostream::Error>(())
+            }));
+        }
+        for t in tasks {
+            t.await.map_err(|e| Error::Io(e.to_string()))??;
+        }
+        let elapsed = start.elapsed();
+        let total = (CONCURRENCY as u64) * (PER_TASK as u64);
+        let qps = total as f64 / elapsed.as_secs_f64();
+        println!(
+            "[bench] 并发 RPC 吞吐（连接池 4）: {qps:.0} req/s（{CONCURRENCY} 并发 × {PER_TASK}，64B）"
+        );
+        pool_client.close();
+    }
+
+    // ===== 2d. RPC 复用通道 + 连接池（pool 4，100 并发 × 1000，64B） =====
+    {
+        let pool_client = ClientBuilder::new()
+            .pool(4)
+            .connect("127.0.0.1:5999")
+            .await?;
+        let payload = vec![0u8; 64];
+        let start = Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..CONCURRENCY {
+            let client = pool_client.clone();
+            let payload = payload.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..PER_TASK {
+                    let _: bytes::Bytes = client
+                        .session()
+                        .request_muxed("echo64", Bytes::from(payload.clone()))
+                        .await?;
+                }
+                Ok::<(), echostream::Error>(())
+            }));
+        }
+        for t in tasks {
+            t.await.map_err(|e| Error::Io(e.to_string()))??;
+        }
+        let elapsed = start.elapsed();
+        let total = (CONCURRENCY as u64) * (PER_TASK as u64);
+        let qps = total as f64 / elapsed.as_secs_f64();
+        println!(
+            "[bench] 并发 RPC 吞吐（复用通道 + 连接池 4）: {qps:.0} req/s（{CONCURRENCY} 并发 × {PER_TASK}，64B）"
+        );
+        pool_client.close();
+    }
+
+    // ===== 2e. 顺序 RPC 延迟（复用通道，64B） =====
+    {
+        let payload = vec![0u8; 64];
+        let start = Instant::now();
+        for _ in 0..N {
+            let _: bytes::Bytes = client
+                .session()
+                .request_muxed("echo64", Bytes::from(payload.clone()))
+                .await?;
+        }
+        let elapsed = start.elapsed();
+        let per = elapsed.as_secs_f64() / N as f64 * 1e6;
+        println!("[bench] 顺序 RPC 延迟（复用通道）: {per:.1} µs/次（{N} 次，64B 载荷）");
+    }
+
     // ===== 3. 事件吞吐（10 万事件，64B / 4KiB） =====
     const EVENTS: u64 = 100_000;
     for size in [64usize, 4 * 1024] {

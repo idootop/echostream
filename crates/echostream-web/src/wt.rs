@@ -144,6 +144,14 @@ impl FrameIo for WtBi {
     async fn finish(&mut self) -> Result<()> {
         self.send.finish().await.map_err(wt_write_err)
     }
+
+    /// 拆分为读写半部（RPC 复用通道用）
+    fn split(self: Box<Self>) -> Result<(Box<dyn FrameIo>, Box<dyn FrameIo>)> {
+        Ok((
+            Box::new(WtUniSend { send: self.send }),
+            Box::new(WtUniRecv { recv: self.recv }),
+        ))
+    }
 }
 
 pub(crate) struct WtUniSend {

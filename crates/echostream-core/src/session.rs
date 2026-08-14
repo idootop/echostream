@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
+use tokio::sync::oneshot;
 
 use bytes::Bytes;
 use echostream_proto::endpoint::{Endpoint, FrameIo};
-use echostream_proto::{Error, EventMsg, Message, RequestMsg, Result};
+use echostream_proto::{Error, EventMsg, Message, RPC_CHANNEL_NAME, RequestMsg, Result};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::codec;
@@ -33,6 +34,56 @@ struct SessionInner {
     timeout: std::time::Duration,
     /// 事件通道：复用一条单向流批量发送事件帧（避免每次 emit 的开流开销）
     event_channel: tokio::sync::Mutex<Option<Box<dyn FrameIo>>>,
+    /// RPC 复用通道：多路复用请求/响应于一条双向流（避免每次请求的开流开销）
+    rpc_channel: tokio::sync::Mutex<Option<Arc<RpcChannel>>>,
+}
+
+/// 复用通道的载荷阈值：超过则走独立流（避免大响应在通道上造成队头阻塞）
+const RPC_CHANNEL_MAX_PAYLOAD: usize = 64 * 1024;
+
+/// RPC 复用通道：一条长连接双向流上按请求 id 多路复用（高频小请求优化，
+/// 消除每次请求的流打开/关闭与包开销；大载荷请走独立流 request_raw）
+///
+/// 底层双向流拆分为读写半部：读循环独占接收端（阻塞等待响应帧），
+/// 写入端并发发送请求，互不阻塞。
+struct RpcChannel {
+    send: tokio::sync::Mutex<Box<dyn FrameIo>>,
+    next_id: AtomicU64,
+    pending: RwLock<HashMap<u64, oneshot::Sender<Result<Bytes>>>>,
+}
+
+impl RpcChannel {
+    fn new(send: Box<dyn FrameIo>) -> Arc<Self> {
+        Arc::new(Self {
+            send: tokio::sync::Mutex::new(send),
+            next_id: AtomicU64::new(1),
+            pending: RwLock::new(HashMap::new()),
+        })
+    }
+
+    /// 读取循环：路由响应帧到对应请求（独占接收半部）
+    async fn reader_loop(self: Arc<Self>, mut recv: Box<dyn FrameIo>) {
+        loop {
+            let msg = match recv.read_message().await {
+                Ok(Some(m)) => m,
+                Ok(None) | Err(_) => break,
+            };
+            if let Message::Response(resp) = msg {
+                if let Some(tx) = self.pending.write().unwrap().remove(&resp.id) {
+                    let _ = tx.send(if resp.code.is_success() {
+                        Ok(resp.data)
+                    } else {
+                        Err(Error::Rpc(resp.code.0, resp.message.unwrap_or_default()))
+                    });
+                }
+            }
+        }
+        // 通道关闭：唤醒所有等待中的请求
+        let pending = std::mem::take(&mut *self.pending.write().unwrap());
+        for (_, tx) in pending {
+            let _ = tx.send(Err(Error::SessionClosed));
+        }
+    }
 }
 
 impl Session {
@@ -57,6 +108,7 @@ impl Session {
                 next_msg_id: AtomicU64::new(1),
                 timeout,
                 event_channel: tokio::sync::Mutex::new(None),
+                rpc_channel: tokio::sync::Mutex::new(None),
             }),
         }
     }
@@ -114,14 +166,96 @@ impl Session {
 
     // ==================== 双向主动通信 ====================
 
+    /// 发起 RPC 请求（走复用通道：一条长连接双向流多路复用，高频小请求性能更好）
+    ///
+    /// 通道按需建立（首请求时开启），响应按请求 id 路由；大载荷请求建议用
+    /// `request_raw`（独立流，无队头阻塞）。
+    pub async fn request_muxed(&self, name: &str, payload: Bytes) -> Result<Bytes> {
+        self.request_muxed_with_timeout(name, payload, self.inner.timeout)
+            .await
+    }
+
+    /// 发起 RPC 请求（复用通道 + 指定超时）
+    pub async fn request_muxed_with_timeout(
+        &self,
+        name: &str,
+        payload: Bytes,
+        timeout: std::time::Duration,
+    ) -> Result<Bytes> {
+        let chan = {
+            let mut guard = self.inner.rpc_channel.lock().await;
+            if guard.is_none() {
+                let io = self.inner.conn.open_bi().await?;
+                // 拆分为读写半部：读循环与写入并发，互不阻塞
+                let (mut send, recv) = io.split()?;
+                // 通道开启标记：保留方法名，对端据此进入通道模式
+                send.write_message(&Message::Request(RequestMsg {
+                    id: 0,
+                    name: RPC_CHANNEL_NAME.into(),
+                    data: Bytes::new(),
+                }))
+                .await?;
+                let chan = RpcChannel::new(send);
+                tokio::spawn(chan.clone().reader_loop(recv));
+                *guard = Some(chan);
+            }
+            guard.as_ref().unwrap().clone()
+        };
+        let id = chan.next_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        chan.pending.write().unwrap().insert(id, tx);
+        {
+            let mut send = chan.send.lock().await;
+            send.write_message(&Message::Request(RequestMsg {
+                id,
+                name: name.to_string(),
+                data: payload,
+            }))
+            .await?;
+        }
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(Error::SessionClosed),
+            Err(_) => {
+                chan.pending.write().unwrap().remove(&id);
+                Err(Error::Timeout(id))
+            }
+        }
+    }
+
     /// 发起 RPC 请求（载荷为已编码字节，不做二次序列化；供各语言绑定使用）
+    ///
+    /// 默认走复用通道（高频小请求性能更好）；载荷超过通道阈值（64KiB）自动
+    /// 切换到独立流（避免大响应在通道上造成队头阻塞）。
     pub async fn request_raw(&self, name: &str, payload: Bytes) -> Result<Bytes> {
         self.request_raw_with_timeout(name, payload, self.inner.timeout)
             .await
     }
 
-    /// 发起 RPC 请求（指定超时，载荷为已编码字节）
+    /// 发起 RPC 请求（指定超时，载荷为已编码字节；自动选择通道/独立流）
     pub async fn request_raw_with_timeout(
+        &self,
+        name: &str,
+        payload: Bytes,
+        timeout: std::time::Duration,
+    ) -> Result<Bytes> {
+        if payload.len() <= RPC_CHANNEL_MAX_PAYLOAD {
+            self.request_muxed_with_timeout(name, payload, timeout)
+                .await
+        } else {
+            self.request_raw_stream_with_timeout(name, payload, timeout)
+                .await
+        }
+    }
+
+    /// 发起 RPC 请求（独立双向流；适合大载荷与流式响应场景）
+    pub async fn request_raw_stream(&self, name: &str, payload: Bytes) -> Result<Bytes> {
+        self.request_raw_stream_with_timeout(name, payload, self.inner.timeout)
+            .await
+    }
+
+    /// 发起 RPC 请求（独立双向流 + 指定超时）
+    pub async fn request_raw_stream_with_timeout(
         &self,
         name: &str,
         payload: Bytes,
@@ -190,41 +324,16 @@ impl Session {
             .await
     }
 
-    /// 发起 RPC 请求并等待响应（指定超时）
+    /// 发起 RPC 请求并等待响应（指定超时；默认走复用通道，大载荷自动切独立流）
     pub async fn request_with_timeout<Req: Serialize + Send, Resp: DeserializeOwned + Send>(
         &self,
         name: &str,
         req: &Req,
         timeout: std::time::Duration,
     ) -> Result<Resp> {
-        let mut stream = self.inner.conn.open_bi().await?;
-        let id = self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed);
-        stream
-            .write_message(&Message::Request(RequestMsg {
-                id,
-                name: name.to_string(),
-                data: codec::encode(req)?,
-            }))
-            .await?;
-        stream.finish().await?;
-
-        let resp = tokio::time::timeout(timeout, async {
-            loop {
-                match stream.read_message().await? {
-                    Some(Message::Response(r)) if r.id == id => return Ok(r),
-                    Some(_) => continue, // 忽略不匹配的帧
-                    None => return Err(Error::SessionClosed),
-                }
-            }
-        })
-        .await
-        .map_err(|_| Error::Timeout(id))??;
-
-        if resp.code.is_success() {
-            codec::decode(&resp.data)
-        } else {
-            Err(Error::Rpc(resp.code.0, resp.message.unwrap_or_default()))
-        }
+        let data = codec::encode(req)?;
+        let resp = self.request_raw_with_timeout(name, data, timeout).await?;
+        codec::decode(&resp)
     }
 
     /// 发送单向事件

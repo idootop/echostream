@@ -3,6 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
+/// RPC 复用通道的保留方法名：通道开启标记帧（首帧 Request，业务侧不可占用）
+pub const RPC_CHANNEL_NAME: &str = "$channel";
+
 /// 消息帧 —— 传输的基本单位
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Message {

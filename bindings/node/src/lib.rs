@@ -138,7 +138,10 @@ impl JsStream {
     #[napi]
     pub async fn send(&self, payload: Uint8Array) -> napi::Result<()> {
         let mut stream = self.inner.lock().await;
-        stream.send_raw(Bytes::copy_from_slice(&payload)).await.map_err(to_napi_err)
+        stream
+            .send_raw(Bytes::copy_from_slice(&payload))
+            .await
+            .map_err(to_napi_err)
     }
 
     /// 关闭流

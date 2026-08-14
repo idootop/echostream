@@ -124,6 +124,22 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
             bi = conn.accept_bi() => {
                 match bi {
                     Ok(mut stream) => match stream.read_message().await {
+                        // RPC 复用通道：长连接双向流上按 id 多路复用请求/响应
+                        Ok(Some(Message::Request(req)))
+                            if req.name == echostream_proto::RPC_CHANNEL_NAME =>
+                        {
+                            let s = session.clone();
+                            let r = router.clone();
+                            loop {
+                                match stream.read_message().await {
+                                    Ok(Some(Message::Request(req))) => {
+                                        r.dispatch_rpc(&s, &mut *stream, req).await;
+                                    }
+                                    Ok(Some(_)) => continue,
+                                    Ok(None) | Err(_) => break,
+                                }
+                            }
+                        }
                         Ok(Some(Message::Request(req))) => {
                             router.dispatch_rpc(&session, &mut *stream, req).await;
                             let _ = stream.finish().await;

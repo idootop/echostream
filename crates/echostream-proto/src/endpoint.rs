@@ -27,6 +27,12 @@ pub trait FrameIo: Send {
     async fn read_message(&mut self) -> Result<Option<Message>>;
     /// 关闭发送端
     async fn finish(&mut self) -> Result<()>;
+
+    /// 拆分为读写半部（RPC 复用通道用：读循环与写入并发互不阻塞）；
+    /// 不支持拆分的流（单向流 / WebSocket 等）返回错误
+    fn split(self: Box<Self>) -> Result<(Box<dyn FrameIo>, Box<dyn FrameIo>)> {
+        Err(Error::Protocol("该流不支持拆分".into()))
+    }
 }
 
 /// 连接抽象（适配 QUIC / WebTransport / WebSocket 等不同传输的连接）
