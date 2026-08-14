@@ -1,35 +1,46 @@
 # EchoStream 插件
 
-这里存放 EchoStream 的核心插件集合和第三方插件示例。
+这里存放 EchoStream 的核心插件集合（控制面扩展：生命周期 / 配置打包）。
 
-## 核心插件规划
+## 核心插件
 
-- **discovery**：局域网服务发现
-- **auth** - Token 认证插件
-- **logging** - 结构化日志
-- **transform** - 传输数据编解码
-- **metrics** - 请求统计、性能指标收集
-- **tracing** - 链路追踪，性能分析
-
-## 使用说明
-
-每个插件都是一个独立的 Rust 项目，可以：
-
-1. 直接集成到你的项目中
-2. 作为参考实现开发自定义插件
-3. 发布为独立的 crate 供他人使用
+| 插件 | 功能 | 运行示例 |
+|------|------|----------|
+| echostream-plugin-auth | 连接 Token 认证（认证事件 + 中间件拦截） | cargo run -p echostream --example plugin_stack |
+| echostream-plugin-reconnect | 客户端断线自动重连（指数退避，主动关闭不重连） | 同上 |
+| echostream-plugin-retry | RPC 请求失败自动重试（仅可恢复错误） | 同上 |
 
 ## 开发指南
 
+插件通过 Builder 打包处理器与生命周期钩子，对外只暴露一个可复用的集合：
+
+```rust
+use echostream_core::{ServerBuilder, ServerPlugin};
+
+pub struct MyPlugin;
+
+impl ServerPlugin for MyPlugin {
+    fn name(&self) -> &str {
+        "my-plugin"
+    }
+
+    fn install(self: Box<Self>, builder: ServerBuilder) -> ServerBuilder {
+        builder
+            .add_rpc(MyRpc)
+            .on_connect(|session| {
+                // 连接钩子
+            })
+    }
+}
+```
+
 创建新插件时，建议遵循以下结构：
 
-```
+```text
 plugin-name/
 ├── Cargo.toml
 ├── src/
 │   └── lib.rs
-├── examples/
-│   └── basic.rs
 └── README.md
 ```
 

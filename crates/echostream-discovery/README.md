@@ -1,48 +1,48 @@
 # echostream-discovery
 
-基于 mDNS 的轻量级局域网服务发现模块。
+基于 mDNS 的局域网零配置服务发现模块。
 
-## 子模块划分
+## 核心模型：ServiceInfo
 
-- `service.rs`: ServiceInfo 模型与属性转换
-- `discovery.rs`: Discovery 门面类，封装广播与发现逻辑
-- `error.rs`: 模块专用错误类型
-
-## 核心模型
-
-### ServiceInfo
-
-定义一个可发现的服务单元。
-
-- `name`: 服务标识
-- `address`: 自动获取的本地 IP
-- `metadata`: 键值对属性（版本、权重、协议等）
-
-## API 示例
+可发现的服务单元（builder 风格构造，自动获取本地 IP）。
 
 ```rust
 use echostream_discovery::{Discovery, ServiceInfo};
 
-// 创建服务信息
-let service = ServiceInfo::new("AudioService")
-    .set_property("port", 8080)
+// 创建服务信息（名称 + 端口，属性为 TXT 记录）
+let service = ServiceInfo::new("AudioService", 8080)?
+    .set_property("version", "0.1.0")
     .set_property("id", "node-1");
-
-// 广播服务
-let advertiser = Discovery::advertise(service).await?;
-
-// 发现服务
-let services = Discovery::discover("AudioService", timeout).await?;
-
-for service in services {
-    println!("发现服务: {} at {}:{}",
-        service.name,
-        service.address,
-        service.get_property("port").unwrap_or_default(),
-    );
-}
 ```
 
+## API
+
+```rust
+use echostream_discovery::{Discovery, ServiceInfo};
+use std::time::Duration;
+
+// 广播服务（返回 RAII guard，drop 后自动停止）
+let _advertiser = Discovery::advertise(service)?;
+
+// 一次性发现（超时返回服务列表）
+let services = Discovery::discover("AudioService", Duration::from_secs(3)).await?;
+
+for svc in &services {
+    println!(
+        "发现服务: {} at {}:{}，版本 {}",
+        svc.name(),
+        svc.address().ip(),
+        svc.address().port(),
+        svc.get_property("version").unwrap_or_default(),
+    );
+}
+
+// 持续发现（流式返回新上线的服务）
+let mut stream = Discovery::discover_stream("AudioService");
+while let Some(svc) = stream.next().await {
+    // ...
+}
+```
 
 ## 注意事项
 

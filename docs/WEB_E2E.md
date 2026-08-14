@@ -34,7 +34,7 @@
 
 1. 生成 CA 并签发证书（openssl 步骤见下）
 2. 导入 CA 到钥匙串：`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db target/e2e-ca/ca.pem`
-3. 启动服务端：`cargo run -p echostream-web --example web_chat_server --release`（默认自签）或加载 CA 证书
+3. 启动服务端：`cargo run -p echostream-transport --example web_chat_server --release --features web`（默认自签）或加载 CA 证书
 4. Safari 打开 `http://127.0.0.1:8080/e2e.html`（`python3 -m http.server 8080 --directory bindings/web`）
 5. 页面自动执行 RPC / 事件 / 流，控制台可见结果
 

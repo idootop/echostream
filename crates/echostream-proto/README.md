@@ -21,11 +21,16 @@
 
 ### Message（消息帧）
 
-    Message::Request(RequestMsg { id, name, data })     // RPC 请求
-    Message::Response(ResponseMsg { id, code, message, data })
-    Message::Event(EventMsg { id, name, data })
-    Message::Stream(StreamMsg { id, name, seq, sender_ts, data })
-    Message::StreamEnd(StreamEndMsg { id })             // 无流关闭语义的传输（WebSocket）用
+```rust
+use echostream_proto::{Message, RequestMsg};
+
+let frame = Message::Request(RequestMsg {
+    id: 1,
+    name: "add".into(),
+    data: bytes::Bytes::new(),
+});
+// 还有 Response / Event / Stream / StreamEnd 变体
+```
 
 ### 传输接口
 
@@ -48,5 +53,12 @@
 | 字符串 | 长度前缀 + UTF-8 | String |
 | 字节数组 | 长度前缀 | Vec<u8> |
 | 数组 / 对象 | 字段序（无长度前缀） | 元组 / 结构体 |
+
+```rust
+use echostream_proto::{Dynamic, Schema, encode, decode, decode_with};
+
+let bytes = encode(&Dynamic::Seq(vec![Dynamic::Int(10), Dynamic::Int(20)]))?;
+assert_eq!(decode(&bytes)?, Dynamic::Seq(vec![Dynamic::Int(10), Dynamic::Int(20)]));
+```
 
 解码默认智能推断（Schema::Auto），歧义场景显式传 Schema。

@@ -10,7 +10,7 @@ EchoStream 通过 QUIC 在单连接上同时承载控制信令与实时数据流
 
 - **双向通信**：客户端和服务端都可以主动发起请求、发送事件和推送流
 - **三种模式**：RPC（请求/响应）、Event（单向事件）、Stream（连续数据流）
-- **高性能**：RPC 复用通道 + 连接池 + 数据报不可靠通道，吞吐与延迟经过基准验证（见 [docs/BENCHMARK.md](docs/BENCHMARK.md)）
+- **高性能**：RPC 复用通道 + 连接池 + 数据报不可靠通道（见 [docs/BENCHMARK.md](docs/BENCHMARK.md)）
 - **多端一致**：Rust / Node / Python / Web 同一协议同一 DX，跨语言互操作开箱即用
 - **自动编解码**：各端直接传原生值（数字/字符串/对象/数组），框架自动序列化
 - **基于 QUIC**：多路复用、0-RTT、自动拥塞控制、TLS 1.3 加密
@@ -38,8 +38,8 @@ async fn on_hello(session: &Session, msg: String) -> Result<()> {
 // 服务端
 #[tokio::main]
 async fn main() -> Result<()> {
-    ServerBuilder::new()
-        .bind("0.0.0.0:5000")
+    let server = ServerBuilder::new()
+        .bind("0.0.0.0:5000")     // QUIC 监听器（自动自签证书）
         .add_rpc(Add)
         .add_event(OnHello)
         .serve()
@@ -58,32 +58,53 @@ async fn client_demo() -> Result<()> {
 ## 多端开发体验一致
 
 ```js
-// Node.js（ESM）
-import { connect, ServerBuilder } from "echostream-node";
+// Node.js（ESM）：import { connect, ServerBuilder } from "echostream-node";
 const client = await connect("127.0.0.1:5000");
 const sum = await client.request("add", 10, 20);   // 30，自动编解码
 ```
 
 ```python
-import echostream
+# Python：import echostream
 client = echostream.connect("127.0.0.1:5000")
-total = client.request("add", 10, 20)             # 30，自动编解码
+total = client.request("add", 10, 20)              # 30，自动编解码
 ```
 
 ```js
-// 浏览器
-import { EchoStream } from "./echostream.js";
+// 浏览器：import { EchoStream } from "./echostream.js";
 const client = new EchoStream("ws://192.168.1.100:8081");
 await client.connect();
-const sum = await client.request("add", 10, 20);  // 30，自动编解码
+const sum = await client.request("add", 10, 20);   // 30，自动编解码
 ```
 
-完整多端 API 见 [bindings/README.md](bindings/README.md)；载荷编码约定（`echostream-proto::dynamic`）
-为四端统一事实来源。
+## 服务发现（mDNS）
+
+```rust
+use echostream::prelude::*;
+use std::time::Duration;
+
+// 服务端：广播服务（携带元数据）
+let service = ServiceInfo::new("echo-server", 5000)?
+    .set_property("version", "0.1.0");
+let _advertiser = Discovery::advertise(service)?;   // RAII：drop 后自动停止
+
+// 客户端：零配置发现并连接
+let found = Discovery::discover("echo-server", Duration::from_secs(3)).await?;
+let client = ClientBuilder::new().connect(found[0].address()).await?;
+```
+
+## 文档
+
+| 文档 | 内容 |
+|------|------|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构分层、模块职责与关键设计 |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | 全仓示例导航（Rust / Node / Python / Web） |
+| [docs/BENCHMARK.md](docs/BENCHMARK.md) | 基准测试方法与结果 |
+| [docs/WEB_E2E.md](docs/WEB_E2E.md) | 浏览器端 E2E 与兼容性调研 |
+| [bindings/README.md](bindings/README.md) | 多端绑定与自动编解码约定 |
 
 ## 架构
 
-```
+```text
 echostream                 统一入口（重导出 + prelude + 宏 + QUIC 便捷 bind/connect）
 ├── echostream-proto            协议层：Message/Error/传输接口/帧编解码/动态值编解码（零运行时依赖）
 ├── echostream-core             框架核心：Server/Client/Session/Router/Handler/中间件/插件
@@ -96,9 +117,8 @@ echostream                 统一入口（重导出 + prelude + 宏 + QUIC 便�
 └── bindings/                   Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）/ Web（浏览器 SDK）
 ```
 
-分层依赖：`proto`（协议）→ `core`（框架，传输无关）→ `transport`（QUIC/WS/WebTransport 实现）→ 扩展与绑定。
-框架完全传输无关：`ServerBuilder::listener` / `ClientBuilder::from_endpoint` 注入任意传输；
-QUIC 便捷 `bind` / `connect` 由 transport 提供（入口 prelude 重导出）。
+分层依赖：`proto`（协议）→ `core`（框架，传输无关）→ `transport`（QUIC/WS/WebTransport）→ 扩展与绑定。
+框架完全传输无关：`ServerBuilder::listener` / `ClientBuilder::from_endpoint` 注入任意传输。
 
 ## 通信模型
 
@@ -107,24 +127,15 @@ QUIC 便捷 `bind` / `connect` 由 transport 提供（入口 prelude 重导出�
 - **Event**：复用长连接单向流批量帧（可靠）；数据报通道（不可靠，吞吐最高）
 - **Stream**：独立单向流，帧自动编解码，多流并行不受限
 
-## 服务发现
-
-```rust
-let _advertiser = advertise("echo-server", 5000)?;
-let addrs = discover("echo-server", Duration::from_secs(3)).await?;
-```
-
 ## 开发
 
 ```bash
-cargo build --workspace          # 编译
+cargo build --workspace                        # 编译
+cargo test -p echostream-proto -p echostream-core -p echostream-transport   # 测试
 cargo run -p echostream --example simple_rpc   # 端到端示例
-cargo run -p echostream --example bench --release  # 基准测试
-node scripts/cross_e2e.mjs       # 跨端矩阵：Rust ↔ Node ↔ Python
+cargo run -p echostream --example bench --release   # 基准测试
+node scripts/cross_e2e.mjs                     # 跨端矩阵：Rust ↔ Node ↔ Python
 ```
-
-完整示例见 `crates/echostream/examples/`：`simple_rpc`（三种模式）、`bidi`（双向通信）、
-`discovery`（服务发现）、`plugin_stack`（插件栈）、`bench`（基准）。
 
 ## License
 

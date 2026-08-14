@@ -1,35 +1,44 @@
 # EchoStream 中间件
 
-这里存放 EchoStream 的核心中间件集合和第三方中间件示例。
+这里存放 EchoStream 的核心中间件集合（数据面扩展：消息拦截与转换，洋葱链执行）。
 
-中间件主要负责处理请求/响应流程中的通用逻辑，洋葱模型按顺序执行。
+## 核心中间件
 
-## 核心中间件规划
-
-- **timeout** - 超时控制
-- **error** - 统一错误处理
-- **logging** - 请求响应结构化日志
-- **transform** - 请求响应数据格式转换
-
-## 使用说明
-
-每个中间件都是一个独立的 Rust 项目，可以：
-
-1. 串联多个中间件形成处理链
-2. 自定义中间件执行顺序
-3. 动态启用/禁用中间件
+| 中间件 | 功能 |
+|--------|------|
+| echostream-middleware-logging | 结构化消息日志 |
 
 ## 开发指南
 
+中间件实现 `Middleware` trait：返回 `Ok(None)` 拦截消息，返回 `Ok(Some(msg))` 可修改内容。
+
+```rust
+use async_trait::async_trait;
+use echostream_core::{Middleware, Session};
+use echostream_proto::{Message, Result};
+
+pub struct Logging;
+
+#[async_trait]
+impl Middleware for Logging {
+    fn name(&self) -> &str {
+        "logging"
+    }
+
+    async fn on_message(&self, session: &Session, msg: Message) -> Result<Option<Message>> {
+        tracing::info!(session = %session.id(), ?msg, "收到消息");
+        Ok(Some(msg)) // 放行；返回 None 拦截
+    }
+}
+```
+
 创建新中间件时，建议遵循以下结构：
 
-```
+```text
 middleware-name/
 ├── Cargo.toml
 ├── src/
 │   └── lib.rs
-├── examples/
-│   └── basic.rs
 └── README.md
 ```
 
@@ -37,6 +46,4 @@ middleware-name/
 
 - 职责单一，功能聚焦
 - 性能优先，避免阻塞
-- 提供灵活的配置选项
-- 支持异步处理
 - 提供清晰的错误信息

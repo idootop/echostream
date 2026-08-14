@@ -57,7 +57,9 @@
       default-features=false 可编译 WASM）；原 echostream-client-core 删除
 - [x] **discovery DX 对齐 README**：ServiceInfo builder（new/set_property/get_property/address）+
       Discovery 门面（advertise/discover/discover_stream）
-- [x] derive/proto README 重写对齐实现；transport README 新建；文档与 CI/RELEASE 同步
+- [x] 文档体系重构：docs/ARCHITECTURE.md（模块职责）+ docs/EXAMPLES.md（全仓示例导航，根 examples/ 并入）；
+      主 README 系统性重写（文档索引 + 最新 Discovery API）；全部 README 代码块改为正式语言围栏格式；
+      plugins/middlewares README 同步实际插件列表
 - [x] 修复：客户端接收循环 RPC 复用通道未 spawn 导致阻塞事件/流接收的严重 bug
       （服务端主动 RPC 后广播/事件丢失）
 - [ ] 发布 v0.1（需 crates.io / npm / PyPI 凭据，按 RELEASE.md 执行）

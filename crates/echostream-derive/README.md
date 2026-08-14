@@ -17,41 +17,53 @@ EchoStream 过程宏：将普通 Rust async 函数转换为框架 Handler（零�
 - 返回 Result<T> 或直接 T（自动序列化）
 - name 缺省时取函数名
 
-    #[rpc("add")]
-    async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
-        Ok(a + b)
-    }
+```rust
+use echostream::prelude::*;
 
-    #[rpc]                       // 方法名为 "login"
-    async fn login(session: &Session, req: LoginReq) -> Result<LoginResp> {
-        Ok(LoginResp::from(session, req))
-    }
+#[rpc("add")]
+async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+    Ok(a + b)
+}
 
-    #[rpc("server.status")]
-    async fn status(_session: &Session) -> Result<Status> { ... }
+#[rpc]                       // 方法名为 "login"
+async fn login(session: &Session, req: LoginReq) -> Result<LoginResp> {
+    Ok(LoginResp::from(session, req))
+}
+
+#[rpc("server.status")]
+async fn status(_session: &Session) -> Result<Status> { /* ... */ }
+```
 
 ### #[event(name)] —— 单向事件监听
 
 - 返回 Result<()> 或 ()
 - 支持 Session 注入
 
-    #[event("hello")]
-    async fn on_hello(session: &Session, msg: String) -> Result<()> {
-        println!("[{}] {msg}", session.peer_addr());
-        Ok(())
-    }
+```rust
+use echostream::prelude::*;
+
+#[event("hello")]
+async fn on_hello(session: &Session, msg: String) -> Result<()> {
+    println!("[{}] {msg}", session.peer_addr());
+    Ok(())
+}
+```
 
 ### #[stream(name)] —— 流式数据处理
 
 - 数据参数必须是 StreamReceiver（recv 自动反序列化帧）
 
-    #[stream("chat")]
-    async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
-        while let Some(text) = stream.recv::<String>().await? {
-            println!("{text}");
-        }
-        Ok(())
+```rust
+use echostream::prelude::*;
+
+#[stream("chat")]
+async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+    while let Some(text) = stream.recv::<String>().await? {
+        println!("{text}");
     }
+    Ok(())
+}
+```
 
 ## 参数提取规则
 
@@ -66,9 +78,11 @@ EchoStream 过程宏：将普通 Rust async 函数转换为框架 Handler（零�
 
 宏生成同名 PascalCase 结构体（add -> Add），注册到 Builder：
 
-    ServerBuilder::new()
-        .add_rpc(Add)        // #[rpc] 生成的处理器
-        .add_event(OnHello)
-        .add_stream(OnChat)
-        .build()
-        .await?;
+```rust
+ServerBuilder::new()
+    .add_rpc(Add)        // #[rpc] 生成的处理器
+    .add_event(OnHello)
+    .add_stream(OnChat)
+    .build()
+    .await?;
+```

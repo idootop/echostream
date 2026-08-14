@@ -57,7 +57,7 @@ wasm-bindgen --target web --out-dir bindings/web/wasm target/wasm32-unknown-unkn
 wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
 ```
 
-Web SDK（`bindings/web/`）随仓库分发或单独 npm 包（`echostream-web`）。
+Web SDK（`bindings/web/`）随仓库分发或单独 npm 包。
 
 ## 5. 发布后验证
 

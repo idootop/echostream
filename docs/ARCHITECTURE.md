@@ -1,10 +1,10 @@
-# EchoStream 模块职责
+# EchoStream 架构与模块职责
 
 > 一个源：README、代码与发布以本文件为准（v4：core 传输无关 + transport 三 feature + client-core 并入）。
 
 ## 分层与依赖方向
 
-```
+```text
 协议层    echostream-proto         Message/Error/传输接口/帧编解码/动态值编解码（零运行时依赖）
                                     ↑
 框架层    echostream-core          Server/Client/Session/Router/Handler/中间件/插件/复用通道/连接池
