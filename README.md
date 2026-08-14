@@ -35,10 +35,10 @@ async fn on_hello(session: &Session, msg: String) -> Result<()> {
     Ok(())
 }
 
-// 服务端
+// 服务端（常驻运行，Ctrl+C 或 shutdown 退出）
 #[tokio::main]
 async fn main() -> Result<()> {
-    let server = ServerBuilder::new()
+    ServerBuilder::new()
         .bind("0.0.0.0:5000")     // QUIC 监听器（自动自签证书）
         .add_rpc(Add)
         .add_event(OnHello)
