@@ -1,9 +1,10 @@
 """EchoStream Python binding 端到端测试：进程内 server + client 完整闭环（自动编解码 DX）"""
+import os
 import sys
 import threading
 import time
 
-sys.path.insert(0, "bindings/python/python")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
 
 import echostream
 

@@ -3,9 +3,10 @@
 新 DX：处理器参数自动解码、返回值自动编码，线缆格式与 Rust 核心一致。
 用法：python3 cross_server.py [端口]（默认 5110）
 """
+import os
 import sys
 
-sys.path.insert(0, "bindings/python/python")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
 
 import echostream
 

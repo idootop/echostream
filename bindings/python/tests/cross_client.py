@@ -2,9 +2,10 @@
 
 用法：python3 cross_client.py [地址]（默认 127.0.0.1:5110）
 """
+import os
 import sys
 
-sys.path.insert(0, "bindings/python/python")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "python"))
 
 import echostream
 
