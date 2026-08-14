@@ -1,7 +1,20 @@
 # EchoStream 基准测试
 
-> 本机回环环境（macOS 26.5 arm64，release 构建，quinn 0.11），数据用于发布参考与优化跟踪。
+> 数据用于发布参考与优化跟踪。
 > 运行：`cargo run -p echostream --example bench --release`
+
+## 测试环境（本机）
+
+| 项目 | 配置 |
+|------|------|
+| 机型 | MacBook Pro（Mac16,8） |
+| 芯片 | Apple M4 Pro（12 核：8 性能 + 4 能效） |
+| 内存 | 24 GB |
+| 系统 | macOS 26.5.1（Build 25F80），arm64 |
+| 工具链 | rustc 1.97.1 / cargo 1.97.1 |
+| 依赖 | quinn 0.11.11（quinn-proto 0.11.16）/ tokio 1.53.1 / postcard 1.1.3 |
+| 构建 | release profile：opt-level 3，LTO，codegen-units 1 |
+| 网络 | 本机回环（loopback） |
 
 ## 结果（2026-08 v0.2 基线：复用通道 + 连接池 + 大窗口）
 
