@@ -84,13 +84,11 @@ const sum = await client.request("add", 10, 20);  // 30，自动编解码
 ## 架构
 
 ```
-echostream                 统一入口（重导出 + prelude + 宏）
+echostream                 统一入口（重导出 + prelude + 宏 + QUIC 便捷 bind/connect）
 ├── echostream-proto            协议层：Message/Error/传输接口/帧编解码/动态值编解码（零运行时依赖）
-├── echostream-core             框架核心 + 内置 QUIC 传输：Server/Client/Session/Router/Handler
-│                                复用通道/连接池/中间件/插件（quic 模块，默认开启）
-├── echostream-client-core      无 I/O 客户端状态机（WASM 复用）
-├── echostream-ws               WebSocket 传输（局域网 Web 零证书）
-├── echostream-web              WebTransport 传输（公网浏览器）
+├── echostream-core             框架核心：Server/Client/Session/Router/Handler/中间件/插件
+│                                复用通道/连接池 + 无 I/O 状态机 ClientCore（io feature 控制 tokio，WASM 可编译）
+├── echostream-transport        传输层：QUIC（默认）/ WebSocket / WebTransport 三 feature
 ├── echostream-derive           过程宏：#[rpc] / #[event] / #[stream]
 ├── echostream-discovery        mDNS 局域网服务发现（可选）
 ├── plugins/                    基础插件：auth / reconnect / retry
@@ -98,8 +96,9 @@ echostream                 统一入口（重导出 + prelude + 宏）
 └── bindings/                   Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）/ Web（浏览器 SDK）
 ```
 
-分层依赖：`proto`（协议 + 传输接口）→ `core`（框架 + QUIC）→ `ws` / `web`（其它传输）→ 扩展与绑定。
-传输无关框架：`ServerBuilder::listener` / `ClientBuilder::from_endpoint` 可注入任意传输实现。
+分层依赖：`proto`（协议）→ `core`（框架，传输无关）→ `transport`（QUIC/WS/WebTransport 实现）→ 扩展与绑定。
+框架完全传输无关：`ServerBuilder::listener` / `ClientBuilder::from_endpoint` 注入任意传输；
+QUIC 便捷 `bind` / `connect` 由 transport 提供（入口 prelude 重导出）。
 
 ## 通信模型
 

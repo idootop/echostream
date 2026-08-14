@@ -15,7 +15,7 @@ use echostream_proto::{Error, Message, Result};
 use wtransport::endpoint::endpoint_side::Server as WtServer;
 use wtransport::{Endpoint, Identity, ServerConfig};
 
-use crate::wt::WtConn;
+use super::wt::WtConn;
 
 /// 生命周期钩子类型
 type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;

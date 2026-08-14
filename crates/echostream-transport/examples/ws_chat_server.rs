@@ -2,10 +2,10 @@
 //!
 //! 局域网 Web 端零证书通信：浏览器 ws:// 直连，帧协议与 QUIC 完全一致。
 //!
-//! 运行：`cargo run -p echostream-ws --example ws_chat_server`
+//! 运行：`cargo run -p echostream-transport --example ws_chat_server --features ws`
 
 use echostream::prelude::*;
-use echostream_ws::WsServerBuilder;
+use echostream_transport::ws::WsServerBuilder;
 
 /// RPC：加法
 #[rpc("add")]

@@ -23,7 +23,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --exclude echostream-python --exclude echostream-node --all-targets -- -D warnings
       - name: 单元与集成测试
-        run: cargo test -p echostream-proto -p echostream-core -p echostream-client-core
+        run: cargo test -p echostream-proto -p echostream-core -p echostream-transport
       - name: 示例冒烟（RPC/Event/Stream 端到端）
         run: cargo run -p echostream --example simple_rpc && cargo run -p echostream --example bidi
       - name: 插件栈冒烟（认证/重连/日志）

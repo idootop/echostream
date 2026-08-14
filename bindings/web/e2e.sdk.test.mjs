@@ -17,7 +17,7 @@ const root = path.resolve(__dirname, "../..");
 // Node 内置 WebSocket 需要 arraybuffer binaryType（与浏览器一致）
 const server = spawn(
   "cargo",
-  ["run", "-q", "-p", "echostream-ws", "--example", "ws_chat_server"],
+  ["run", "-q", "-p", "echostream-transport", "--features", "ws", "--example", "ws_chat_server"],
   { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
 );
 let serverLog = "";

@@ -15,12 +15,11 @@
 ```bash
 # 需要 crates.io API token：cargo login
 cargo publish -p echostream-proto
-cargo publish -p echostream-client-core
-cargo publish -p echostream-core          # 含内置 QUIC 传输
+cargo publish -p echostream-core            # 框架 + 无 I/O 状态机
+cargo publish -p echostream-transport       # QUIC/WS/WebTransport 传输
 cargo publish -p echostream-derive
 cargo publish -p echostream-discovery
-cargo publish -p echostream-web
-cargo publish -p echostream          # 最后发布统一入口
+cargo publish -p echostream                 # 最后发布统一入口
 ```
 
 每个 crate 发布前先验证：`cargo package -p <crate> --allow-dirty --no-verify`

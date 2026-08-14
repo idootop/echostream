@@ -11,6 +11,7 @@ use echostream_core::{
     StreamHandler, StreamReceiver,
 };
 use echostream_proto::{Error, Message, Result, StatusCode};
+use echostream_transport::{ClientBuilderExt, ServerBuilderExt};
 
 // ======================== 测试处理器 ========================
 

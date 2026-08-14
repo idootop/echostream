@@ -296,21 +296,12 @@ dependencies = [
  "echostream-plugin-reconnect",
  "echostream-plugin-retry",
  "echostream-proto",
+ "echostream-transport",
  "postcard",
  "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "echostream-client-core"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "echostream-proto",
- "futures",
- "postcard",
 ]
 
 [[package]]
@@ -322,10 +313,6 @@ dependencies = [
  "echostream-proto",
  "futures",
  "postcard",
- "quinn",
- "rcgen",
- "rustls",
- "rustls-pki-types",
  "serde",
  "tokio",
  "tracing",
@@ -395,6 +382,7 @@ version = "0.1.0"
 dependencies = [
  "echostream-core",
  "echostream-proto",
+ "echostream-transport",
  "tokio",
  "tracing",
 ]
@@ -435,19 +423,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "echostream-wasm"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "echostream-client-core",
- "echostream-proto",
- "js-sys",
- "postcard",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "echostream-web"
+name = "echostream-transport"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -455,31 +431,32 @@ dependencies = [
  "echostream",
  "echostream-core",
  "echostream-proto",
+ "futures",
+ "futures-util",
  "postcard",
+ "quinn",
  "rcgen",
- "serde",
+ "rustls",
+ "rustls-pki-types",
  "time",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "tungstenite",
  "wtransport",
 ]
 
 [[package]]
-name = "echostream-ws"
+name = "echostream-wasm"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "bytes",
- "echostream",
  "echostream-core",
  "echostream-proto",
- "futures-util",
+ "js-sys",
  "postcard",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "tungstenite",
+ "wasm-bindgen",
 ]
 
 [[package]]

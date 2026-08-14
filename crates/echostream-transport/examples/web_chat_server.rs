@@ -1,13 +1,13 @@
 //! EchoStream WebTransport 常驻服务端（浏览器 E2E 测试用）
 //!
-//! 运行：`cargo run -p echostream-web --example web_chat_server --release`
+//! 运行：`cargo run -p echostream-transport --example web_chat_server --release --features web`
 
 use echostream::prelude::*;
-use echostream_web::WebServerBuilder;
+use echostream_transport::web::WebServerBuilder;
 
 /// RPC：加法
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (u64, u64)) -> Result<u64> {
+async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 

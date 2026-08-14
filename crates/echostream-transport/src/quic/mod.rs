@@ -1,7 +1,7 @@
-//! 内置 QUIC 传输（quinn 封装）：端点、连接、流与消息帧编解码
+//! QUIC 传输（quinn 封装）：端点、连接、流与消息帧编解码
 //!
-//! 由 `echostream-transport` 合并而来：QUIC 是默认主传输，随核心框架开箱即用；
-//! WebSocket / WebTransport 作为同级传输实现独立分包（`echostream-ws` / `echostream-web`）。
+//! QUIC 是默认主传输（feature = "quic"），配套便捷 API（`ServerBuilderExt::bind` /
+//! `ClientBuilderExt::connect`）在 crate 根部；WebSocket / WebTransport 为同级传输。
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;

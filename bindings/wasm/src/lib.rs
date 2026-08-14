@@ -417,7 +417,7 @@ fn get_bytes(obj: &Object, key: &str) -> Result<Bytes, JsValue> {
 /// JS 网络层只需：读帧 -> handle_inbound，写帧 <- 各 build 方法产物。
 #[wasm_bindgen]
 pub struct ClientCoreHandle {
-    core: echostream_client_core::ClientCore,
+    core: echostream_core::ClientCore,
 }
 
 impl Default for ClientCoreHandle {
@@ -441,7 +441,7 @@ impl ClientCoreHandle {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            core: echostream_client_core::ClientCore::new(),
+            core: echostream_core::ClientCore::new(),
         }
     }
 

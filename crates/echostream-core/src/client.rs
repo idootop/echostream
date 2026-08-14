@@ -3,7 +3,6 @@
 //! 支持连接池（`ClientBuilder::pool(n)`）：多 QUIC 连接分摊流控窗口并
 //! 跨核扩展（quinn 单连接为单任务处理），RPC 按轮询分发；事件与流走主连接。
 
-use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -284,21 +283,9 @@ impl ClientBuilder {
         client
     }
 
-    /// 使用 QUIC 连接到服务端（feature = "quic"；按连接池大小建立连接）
-    #[cfg(feature = "quic")]
-    pub async fn connect(self, addr: impl ToSocketAddrs) -> echostream_proto::Result<Client> {
-        let addr = addr
-            .to_socket_addrs()
-            .map_err(|e| echostream_proto::Error::Io(e.to_string()))?
-            .next()
-            .ok_or_else(|| {
-                echostream_proto::Error::InvalidParameter("无法解析服务端地址".into())
-            })?;
-        let mut conns: Vec<Arc<dyn Endpoint>> = Vec::with_capacity(self.pool_size);
-        for _ in 0..self.pool_size {
-            conns.push(Arc::new(crate::quic::connect(addr).await?));
-        }
-        Ok(self.from_endpoints(conns))
+    /// 连接池大小（供 echostream-transport 便捷 connect 使用）
+    pub fn pool_size(&self) -> usize {
+        self.pool_size
     }
 }
 
@@ -322,36 +309,42 @@ async fn receive_loop(client: Client, session: Session) {
         tokio::select! {
             bi = conn.accept_bi() => {
                 match bi {
-                    Ok(mut stream) => match stream.read_message().await {
-                        // RPC 复用通道：长连接双向流上按 id 多路复用请求/响应
-                        Ok(Some(Message::Request(req)))
-                            if req.name == echostream_proto::RPC_CHANNEL_NAME =>
-                        {
-                            let c = client.clone();
-                            let s = session.clone();
-                            loop {
-                                match stream.read_message().await {
-                                    Ok(Some(Message::Request(req))) => {
-                                        c.inner
-                                            .router
-                                            .dispatch_rpc(&s, &mut *stream, req)
-                                            .await;
+                    Ok(stream) => {
+                        // spawn 处理：RPC 复用通道等长连接场景不得阻塞 accept 主循环
+                        let c = client.clone();
+                        let s = session.clone();
+                        tokio::spawn(async move {
+                            let mut stream = stream;
+                            match stream.read_message().await {
+                                // RPC 复用通道：长连接双向流上按 id 多路复用请求/响应
+                                Ok(Some(Message::Request(req)))
+                                    if req.name == echostream_proto::RPC_CHANNEL_NAME =>
+                                {
+                                    loop {
+                                        match stream.read_message().await {
+                                            Ok(Some(Message::Request(req))) => {
+                                                c.inner
+                                                    .router
+                                                    .dispatch_rpc(&s, &mut *stream, req)
+                                                    .await;
+                                            }
+                                            Ok(Some(_)) => continue,
+                                            Ok(None) | Err(_) => break,
+                                        }
                                     }
-                                    Ok(Some(_)) => continue,
-                                    Ok(None) | Err(_) => break,
                                 }
+                                Ok(Some(Message::Request(req))) => {
+                                    c.inner.router.dispatch_rpc(&s, &mut *stream, req).await;
+                                    let _ = stream.finish().await;
+                                }
+                                Ok(Some(Message::Stream(frame))) => {
+                                    c.inner.router.dispatch_stream(&s, stream, frame).await;
+                                }
+                                Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
+                                Ok(None) | Err(_) => {}
                             }
-                        }
-                        Ok(Some(Message::Request(req))) => {
-                            client.inner.router.dispatch_rpc(&session, &mut *stream, req).await;
-                            let _ = stream.finish().await;
-                        }
-                        Ok(Some(Message::Stream(frame))) => {
-                            client.inner.router.dispatch_stream(&session, stream, frame).await;
-                        }
-                        Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
-                        Ok(None) | Err(_) => break,
-                    },
+                        });
+                    }
                     Err(_) => break,
                 }
             }

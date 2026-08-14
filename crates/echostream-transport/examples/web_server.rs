@@ -3,10 +3,10 @@
 //! 启动 WebTransport（HTTP/3）服务端，用 wtransport 客户端模拟浏览器连接，
 //! 验证 RPC / Event / Stream 三种模式（与原生 QUIC 客户端同一套协议）。
 //!
-//! 运行：`cargo run -p echostream-web --example web_server`
+//! 运行：`cargo run -p echostream-transport --example web_server --features web`
 
 use echostream::prelude::*;
-use echostream_web::WebServerBuilder;
+use echostream_transport::web::WebServerBuilder;
 use wtransport::endpoint::endpoint_side::Client;
 use wtransport::{ClientConfig, Endpoint};
 

@@ -1,0 +1,62 @@
+[package]
+name = "echostream-transport"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "传输层：QUIC（默认）/ WebSocket / WebTransport 实现与 QUIC 便捷 API"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }
+postcard = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+futures = "0.3"
+
+# QUIC（feature = "quic"，默认开启）
+quinn = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pki-types = { workspace = true, optional = true }
+rcgen = { workspace = true, optional = true }
+
+# WebSocket（feature = "ws"）
+tokio-tungstenite = { version = "0.30", optional = true }
+tungstenite = { version = "0.30", optional = true }
+futures-util = { version = "0.3", optional = true }
+
+# WebTransport（feature = "web"）
+wtransport = { version = "0.7", optional = true, features = ["dangerous-configuration"] }
+
+[features]
+default = ["quic"]
+quic = ["dep:quinn", "dep:rustls", "dep:rustls-pki-types", "dep:rcgen"]
+ws = ["dep:tokio-tungstenite", "dep:tungstenite", "dep:futures-util"]
+web = ["dep:wtransport"]
+
+[[example]]
+name = "ws_chat_server"
+required-features = ["ws"]
+
+[[example]]
+name = "web_server"
+required-features = ["web"]
+
+[[example]]
+name = "web_chat_server"
+required-features = ["web"]
+
+[dev-dependencies]
+echostream = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+rcgen = { workspace = true }
+time = "0.3"

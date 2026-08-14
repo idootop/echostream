@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
-use echostream_client_core::ClientCore;
+use echostream_core::ClientCore;
 use echostream_proto::{
     EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp,
 };

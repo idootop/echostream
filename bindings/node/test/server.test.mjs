@@ -78,7 +78,7 @@ async function main() {
   // 服务端广播
   await server.broadcast("hello", "broadcast!");
 
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 1000));
   client.close();
   server.shutdown();
   await runPromise;

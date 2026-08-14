@@ -185,13 +185,19 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
     tracing::debug!("客户端断开: session {}", session.id());
 }
 
+/// 监听器工厂：build 时延迟创建传输监听器（供 echostream-transport 便捷 bind 使用）
+pub type ListenerFactory = Arc<
+    dyn Fn() -> futures::future::BoxFuture<'static, echostream_proto::Result<Arc<dyn Listener>>>
+        + Send
+        + Sync,
+>;
+
 /// 服务端构建器
 pub struct ServerBuilder {
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
     listener: Option<Arc<dyn Listener>>,
-    #[cfg(feature = "quic")]
-    quic_addr: Option<String>,
+    listener_factory: Option<ListenerFactory>,
     on_start: Vec<Hook<ServerContext>>,
     on_stop: Vec<Hook<ServerContext>>,
     on_connect: Vec<Hook<Session>>,
@@ -211,8 +217,7 @@ impl ServerBuilder {
             router: Arc::new(Router::default()),
             ctx: Arc::new(ServerContext::new()),
             listener: None,
-            #[cfg(feature = "quic")]
-            quic_addr: None,
+            listener_factory: None,
             on_start: Vec::new(),
             on_stop: Vec::new(),
             on_connect: Vec::new(),
@@ -226,17 +231,10 @@ impl ServerBuilder {
         self
     }
 
-    /// 使用 QUIC 监听器（feature = "quic"）
-    #[cfg(feature = "quic")]
-    pub fn bind_quic(mut self, addr: impl Into<String>) -> Self {
-        self.quic_addr = Some(addr.into());
+    /// 使用监听器工厂（build 时延迟创建；供 echostream-transport 便捷 bind 使用）
+    pub fn listener_factory(mut self, factory: ListenerFactory) -> Self {
+        self.listener_factory = Some(factory);
         self
-    }
-
-    /// 使用 QUIC 监听器（便捷别名，feature = "quic"）
-    #[cfg(feature = "quic")]
-    pub fn bind(self, addr: impl Into<String>) -> Self {
-        self.bind_quic(addr)
     }
 
     /// 使用现有的处理器注册表（供各语言绑定层注入处理器）
@@ -323,20 +321,17 @@ impl ServerBuilder {
 
     /// 构建服务端
     pub async fn build(self) -> echostream_proto::Result<Server> {
-        #[cfg(feature = "quic")]
         let listener = match self.listener {
             Some(l) => l,
-            None => {
-                let addr = self.quic_addr.ok_or_else(|| {
-                    echostream_proto::Error::InvalidParameter("未指定监听器或监听地址".into())
-                })?;
-                Arc::new(crate::quic::QuicEndpoint::bind(addr).await?) as Arc<dyn Listener>
-            }
+            None => match self.listener_factory {
+                Some(factory) => factory().await?,
+                None => {
+                    return Err(echostream_proto::Error::InvalidParameter(
+                        "未指定监听器（listener() 或 listener_factory()）".into(),
+                    ));
+                }
+            },
         };
-        #[cfg(not(feature = "quic"))]
-        let listener = self
-            .listener
-            .ok_or_else(|| echostream_proto::Error::InvalidParameter("未指定监听器".into()))?;
         Ok(Server {
             listener,
             router: self.router,
