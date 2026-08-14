@@ -231,7 +231,7 @@ impl PyStreamReceiver {
             tokio::task::block_in_place(|| {
                 let mut guard = handle.block_on(self.inner.lock());
                 match guard.as_mut() {
-                    Some(recv) => handle.block_on(recv.recv()),
+                    Some(recv) => handle.block_on(recv.recv_frame()),
                     None => Ok(None),
                 }
             })

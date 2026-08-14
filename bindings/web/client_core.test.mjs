@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const wasm = require("../wasm/node/echostream_wasm.js");
-const { ClientCoreHandle, encode_payload, encode_frame, decode_message, decode_u64, decode_string } = wasm;
+const { ClientCoreHandle, encode_payload, encode_frame, decode_message, decode_i64, decode_string } = wasm;
 
 const core = new ClientCoreHandle();
 console.log("✅ 状态机创建");
@@ -13,7 +13,7 @@ console.log("✅ 状态机创建");
 // ===== RPC 请求/响应匹配 =====
 let respValue = null;
 const reqFrame = core.request("add", encode_payload([10, 20]), (data) => {
-  respValue = decode_u64(data);
+  respValue = decode_i64(data); // i64 ZigZag 约定
 });
 const req = decode_message(reqFrame.subarray(4));
 assert.equal(req.type, "request");

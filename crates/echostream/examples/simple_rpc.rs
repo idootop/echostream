@@ -29,9 +29,10 @@ async fn on_hello(session: &Session, data: String) -> Result<()> {
 #[stream("chat")]
 async fn on_chat(session: &Session, mut stream: StreamReceiver) -> Result<()> {
     println!("[server] 流 chat 开始 <- {}", session.peer_addr());
-    while let Some(frame) = stream.recv().await? {
-        let text = String::from_utf8_lossy(&frame.data);
-        println!("[server] 流帧 #{}: {text}", frame.seq);
+    let mut seq = 0u64;
+    while let Some(text) = stream.recv::<String>().await? {
+        println!("[server] 流帧 #{seq}: {text}");
+        seq += 1;
     }
     println!("[server] 流 chat 结束");
     Ok(())

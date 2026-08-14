@@ -17,14 +17,14 @@ fn rpc_response_matches_by_id() {
     // 发起两个请求，响应乱序到达也应正确匹配
     let (id1, req1) = core.build_request("add", Bytes::from(vec![1]), {
         let got = got.clone();
-        move |data: Bytes| {
+        move |data: Bytes, _err: Option<String>| {
             assert_eq!(data.as_ref(), b"r1");
             got.fetch_add(1, Ordering::Relaxed);
         }
     });
     let (id2, req2) = core.build_request("add", Bytes::from(vec![2]), {
         let got = got.clone();
-        move |data: Bytes| {
+        move |data: Bytes, _err: Option<String>| {
             assert_eq!(data.as_ref(), b"r2");
             got.fetch_add(10, Ordering::Relaxed);
         }
@@ -74,7 +74,7 @@ fn error_response_calls_back_with_empty() {
     let called = Arc::new(AtomicU64::new(0));
     let (id, _) = core.build_request("x", Bytes::new(), {
         let called = called.clone();
-        move |data: Bytes| {
+        move |data: Bytes, _err: Option<String>| {
             assert!(data.is_empty(), "错误响应应回调空数据");
             called.fetch_add(1, Ordering::Relaxed);
         }
@@ -95,7 +95,7 @@ fn event_routes_to_listeners() {
     let count = Arc::new(AtomicU64::new(0));
     core.on_event("hello", {
         let count = count.clone();
-        move |data: Bytes| {
+        move |_name: &str, data: Bytes| {
             assert_eq!(data.as_ref(), b"world");
             count.fetch_add(1, Ordering::Relaxed);
         }
@@ -121,7 +121,7 @@ fn event_routes_to_listeners() {
 #[test]
 fn server_initiated_rpc_gets_response() {
     let mut core = ClientCore::new();
-    core.on_rpc("add", |data: Bytes| {
+    core.on_rpc("add", |_id: u64, data: Bytes| {
         let (a, b): (i64, i64) = postcard::from_bytes(&data).unwrap();
         Some(postcard::to_allocvec(&(a + b)).unwrap().into())
     });
@@ -164,7 +164,7 @@ fn unknown_rpc_gets_error_response() {
 #[test]
 fn async_rpc_handler_defers_response() {
     let mut core = ClientCore::new();
-    core.on_rpc("slow", |_: Bytes| None); // 异步：稍后补响应
+    core.on_rpc("slow", |_id: u64, _: Bytes| None); // 异步：稍后补响应
 
     let req = Message::Request(RequestMsg {
         id: 5,

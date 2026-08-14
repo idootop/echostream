@@ -231,7 +231,7 @@ impl JsStreamReceiver {
     pub async fn recv(&self) -> napi::Result<Option<Vec<u8>>> {
         let mut guard = self.inner.lock().await;
         if let Some(recv) = guard.as_mut() {
-            match recv.recv().await.map_err(to_napi_err)? {
+            match recv.recv_frame().await.map_err(to_napi_err)? {
                 Some(frame) => Ok(Some(frame.data.to_vec())),
                 None => Ok(None),
             }

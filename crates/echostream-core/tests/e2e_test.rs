@@ -85,7 +85,7 @@ impl StreamHandler for SumStream {
     }
     async fn handle(&self, _s: &Session, mut stream: StreamReceiver) -> Result<()> {
         let mut total = 0u64;
-        while let Some(frame) = stream.recv().await? {
+        while let Some(frame) = stream.recv_frame().await? {
             total += frame.data.len() as u64;
         }
         self.0.store(total, Ordering::Relaxed);
@@ -233,7 +233,10 @@ async fn events_and_stream_roundtrip() {
     // 流
     let mut stream = client.create_stream("sum").await.unwrap();
     for _ in 0..5 {
-        stream.send(vec![0u8; 1024]).await.unwrap();
+        stream
+            .send_raw(bytes::Bytes::from(vec![0u8; 1024]))
+            .await
+            .unwrap();
     }
     stream.finish().await.unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;

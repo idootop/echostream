@@ -29,12 +29,10 @@ async fn on_hello(session: &Session, data: String) -> Result<()> {
 /// Stream：接收客户端流
 #[stream("chat")]
 async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
-    while let Some(frame) = stream.recv().await? {
-        println!(
-            "[server] 流帧 #{}: {}",
-            frame.seq,
-            String::from_utf8_lossy(&frame.data)
-        );
+    let mut seq = 0u64;
+    while let Some(text) = stream.recv::<String>().await? {
+        println!("[server] 流帧 #{seq}: {text}");
+        seq += 1;
     }
     Ok(())
 }

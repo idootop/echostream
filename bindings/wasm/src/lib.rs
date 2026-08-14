@@ -1,49 +1,103 @@
 //! EchoStream WASM binding
 //!
-//! 将 Rust 侧的协议编解码编译为 WASM，供浏览器/Node 复用：
-//! - `encode_payload`：JS 值 → postcard 载荷字节
-//! - `encode_message` / `decode_message`：Message 编解码
-//! - `encode_frame`：帧（长度前缀 + 消息）
+//! 将 Rust 侧协议核心编译为 WASM，供浏览器 / Node 复用（单一事实来源）：
+//! - encode_payload / decode_payload：JS 值 <-> postcard 载荷字节（自动编解码）
+//! - encode_message / decode_message / encode_frame：Message 帧编解码
+//! - ClientCoreHandle：无 I/O 客户端状态机（RPC 匹配 / 事件路由 / 流管理）
 //!
-//! 单一事实来源：与 Rust 服务端的线缆格式天然一致，无需跨语言重实现。
+//! 载荷编码约定（与 echostream-proto::dynamic 一致）：
+//! - JS 整数（含负数）-> i64 ZigZag varint；BigInt -> u64 普通 varint
+//! - 浮点数 -> f64 小端；布尔 -> 单字节；字符串/字节 -> 长度前缀
+//! - 数组 -> 元组/结构体字段序；对象 -> 结构体字段序
 
 use bytes::Bytes;
 use echostream_proto::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
+    Dynamic, EventMsg, Message, RequestMsg, ResponseMsg, Schema, StatusCode, StreamEndMsg,
+    StreamMsg, Timestamp,
 };
 use js_sys::{Array, BigInt, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-// ======================== 载荷编码 ========================
+// ======================== 载荷自动编解码 ========================
 
-/// 编码载荷：JS 值 → postcard 字节
-///
-/// 支持：number（非负整数 → u64 varint，负数 → i64 zigzag）、bigint、
-/// string（长度前缀 + UTF-8）、Uint8Array（长度前缀 + 字节）、
-/// Array（按 Rust 元组/结构体字段顺序编码，无长度前缀）、
-/// Object（字段按插入序编码，等价结构体字段序）。
+/// 编码载荷：JS 值 -> postcard 字节（约定见模块文档）
 #[wasm_bindgen]
 pub fn encode_payload(value: JsValue) -> Result<Vec<u8>, JsValue> {
-    let mut w = Writer::default();
-    w.value(&value)?;
-    Ok(w.bytes)
+    let v = js_to_dynamic(&value)?;
+    echostream_proto::dynamic::encode(&v).map_err(js_err_from)
+}
+
+/// 解码载荷：postcard 字节 -> JS 值（智能推断）
+///
+/// schema 可选（字符串 / 数组 / 对象），用于歧义场景精确解码：
+/// - "auto" | "number" | "bigint" | "u64" | "bool" | "string" | "bytes" | "f64" | "f32" | "list"
+/// - 数组 = 元组逐字段；对象 = 结构体具名字段
+#[wasm_bindgen]
+pub fn decode_payload(bytes: &[u8], schema: JsValue) -> Result<JsValue, JsValue> {
+    let s = js_to_schema(&schema)?;
+    let v = echostream_proto::dynamic::decode_with(bytes, &s).map_err(js_err_from)?;
+    Ok(dynamic_to_js(&v))
+}
+
+// ======================== 载荷解码原语（兼容） ========================
+
+/// 解码 u64（普通 varint）
+#[wasm_bindgen]
+pub fn decode_u64(bytes: &[u8]) -> Result<f64, JsValue> {
+    match echostream_proto::dynamic::decode_with(bytes, &Schema::U64).map_err(js_err_from)? {
+        Dynamic::UInt(n) => Ok(n as f64),
+        _ => Err(js_err("载荷不是 u64")),
+    }
+}
+
+/// 编码 i64（ZigZag varint，与 postcard 有符号整数一致）
+#[wasm_bindgen]
+pub fn encode_i64(n: i64) -> Vec<u8> {
+    echostream_proto::dynamic::encode(&Dynamic::Int(n)).expect("编码失败")
+}
+
+/// 解码 i64（ZigZag varint）
+#[wasm_bindgen]
+pub fn decode_i64(bytes: &[u8]) -> Result<f64, JsValue> {
+    match echostream_proto::dynamic::decode_with(bytes, &Schema::Number).map_err(js_err_from)? {
+        Dynamic::Int(n) => Ok(n as f64),
+        _ => Err(js_err("载荷不是 i64")),
+    }
+}
+
+/// 解码 string
+#[wasm_bindgen]
+pub fn decode_string(bytes: &[u8]) -> Result<String, JsValue> {
+    match echostream_proto::dynamic::decode_with(bytes, &Schema::Str).map_err(js_err_from)? {
+        Dynamic::Str(s) => Ok(s),
+        _ => Err(js_err("载荷不是字符串")),
+    }
+}
+
+/// 解码 bytes（长度前缀 + 字节）
+#[wasm_bindgen]
+pub fn decode_bytes(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
+    match echostream_proto::dynamic::decode_with(bytes, &Schema::Bytes).map_err(js_err_from)? {
+        Dynamic::Bytes(b) => Ok(b),
+        _ => Err(js_err("载荷不是字节数组")),
+    }
 }
 
 // ======================== 消息编解码 ========================
 
-/// 编码消息：JS 对象 → postcard 字节
+/// 编码消息：JS 对象 -> postcard 字节
 ///
-/// 输入：`{ type, id, name, data, ... }`
-/// - request/event：`{ type, id, name, data: Uint8Array }`
-/// - response：`{ type, id, code, message?, data }`
-/// - stream：`{ type, id, name, seq, senderTs, data }`
+/// 输入：{ type, id, name, data, ... }
+/// - request/event：{ type, id, name, data: Uint8Array }
+/// - response：{ type, id, code, message?, data }
+/// - stream：{ type, id, name, seq, senderTs, data }
 #[wasm_bindgen]
 pub fn encode_message(msg: JsValue) -> Result<Vec<u8>, JsValue> {
     let msg = js_to_message(&msg)?;
     postcard::to_allocvec(&msg).map_err(|e| js_err(&format!("编码失败: {e}")))
 }
 
-/// 解码消息：postcard 字节 → JS 对象
+/// 解码消息：postcard 字节 -> JS 对象
 #[wasm_bindgen]
 pub fn decode_message(bytes: &[u8]) -> Result<JsValue, JsValue> {
     let msg: Message =
@@ -61,188 +115,155 @@ pub fn encode_frame(msg: JsValue) -> Result<Vec<u8>, JsValue> {
     Ok(frame)
 }
 
-// ======================== 载荷解码原语 ========================
+// ======================== JS 值 <-> Dynamic ========================
 
-/// 解码 u64（varint）
-#[wasm_bindgen]
-pub fn decode_u64(bytes: &[u8]) -> Result<f64, JsValue> {
-    let mut r = Reader::new(bytes);
-    let v = r.varint()?;
-    Ok(v as f64)
-}
-
-/// 编码 i64（ZigZag varint，与 postcard 有符号整数一致）
-#[wasm_bindgen]
-pub fn encode_i64(n: i64) -> Vec<u8> {
-    let mut w = Writer::default();
-    w.varint(((n << 1) ^ (n >> 63)) as u64);
-    w.bytes
-}
-
-/// 解码 i64（ZigZag varint）
-#[wasm_bindgen]
-pub fn decode_i64(bytes: &[u8]) -> Result<f64, JsValue> {
-    let mut r = Reader::new(bytes);
-    let v = r.varint()?;
-    Ok(((v >> 1) as i64 ^ -((v & 1) as i64)) as f64)
-}
-
-/// 解码 string
-#[wasm_bindgen]
-pub fn decode_string(bytes: &[u8]) -> Result<String, JsValue> {
-    let mut r = Reader::new(bytes);
-    r.string()
-}
-
-/// 解码 bytes（长度前缀 + 字节）
-#[wasm_bindgen]
-pub fn decode_bytes(bytes: &[u8]) -> Result<Vec<u8>, JsValue> {
-    let mut r = Reader::new(bytes);
-    r.bytes()
-}
-
-// ======================== 编码器 ========================
-
-#[derive(Default)]
-struct Writer {
-    bytes: Vec<u8>,
-}
-
-impl Writer {
-    fn varint(&mut self, mut n: u64) {
-        while n >= 0x80 {
-            self.bytes.push((n as u8 & 0x7f) | 0x80);
-            n >>= 7;
+/// JS 值 -> Dynamic（约定见模块文档）
+fn js_to_dynamic(v: &JsValue) -> Result<Dynamic, JsValue> {
+    if v.is_undefined() || v.is_null() {
+        return Ok(Dynamic::Null);
+    }
+    if let Some(b) = v.as_bool() {
+        return Ok(Dynamic::Bool(b));
+    }
+    if let Some(n) = v.as_f64() {
+        if !n.is_finite() {
+            return Err(js_err("载荷 number 必须是有限值"));
         }
-        self.bytes.push(n as u8);
+        if n.fract() == 0.0 && n.abs() <= 9.007199254740992e15 {
+            return Ok(Dynamic::Int(n as i64)); // JS 整数 -> i64 ZigZag 约定
+        }
+        return Ok(Dynamic::Float(n)); // 浮点 -> f64
     }
-
-    fn put_bytes(&mut self, data: &[u8]) {
-        self.varint(data.len() as u64);
-        self.bytes.extend_from_slice(data);
+    if v.is_bigint() {
+        let big = BigInt::from(v.clone());
+        let s = big
+            .to_string(10)
+            .map_err(|_| js_err("bigint 转换失败"))?
+            .as_string()
+            .unwrap_or_default();
+        // 非负 BigInt -> u64 普通 varint；负数 -> i64 ZigZag
+        if let Ok(n) = s.parse::<u64>() {
+            return Ok(Dynamic::UInt(n));
+        }
+        if let Ok(n) = s.parse::<i64>() {
+            return Ok(Dynamic::Int(n));
+        }
+        return Err(js_err("bigint 超出 u64/i64 范围"));
     }
-
-    fn string(&mut self, s: &str) {
-        self.put_bytes(s.as_bytes());
+    if let Some(s) = v.as_string() {
+        return Ok(Dynamic::Str(s));
     }
+    if let Some(arr) = v.dyn_ref::<Uint8Array>() {
+        return Ok(Dynamic::Bytes(arr.to_vec()));
+    }
+    if let Some(arr) = v.dyn_ref::<Array>() {
+        let mut items = Vec::with_capacity(arr.length() as usize);
+        for item in arr.iter() {
+            items.push(js_to_dynamic(&item)?);
+        }
+        return Ok(Dynamic::Seq(items));
+    }
+    if v.is_object() {
+        let obj = Object::from(v.clone());
+        let keys =
+            Reflect::own_keys(&obj).map_err(|e| js_err(&format!("对象键获取失败: {e:?}")))?;
+        let mut fields = Vec::with_capacity(keys.length() as usize);
+        for i in 0..keys.length() {
+            let key = keys.get(i);
+            let key_str = key.as_string().ok_or_else(|| js_err("对象键非字符串"))?;
+            let val =
+                Reflect::get(&obj, &key).map_err(|e| js_err(&format!("字段读取失败: {e:?}")))?;
+            fields.push((key_str, js_to_dynamic(&val)?));
+        }
+        return Ok(Dynamic::Map(fields));
+    }
+    Err(js_err("不支持的载荷类型"))
+}
 
-    fn value(&mut self, v: &JsValue) -> Result<(), JsValue> {
-        if let Some(n) = v.as_f64() {
-            // number：整数且安全范围内
-            if !n.is_finite() || n.fract() != 0.0 {
-                return Err(js_err("载荷 number 必须是整数"));
-            }
-            if n >= 0.0 {
-                self.varint(n as u64);
+/// Dynamic -> JS 值
+fn dynamic_to_js(v: &Dynamic) -> JsValue {
+    match v {
+        Dynamic::Null => JsValue::UNDEFINED,
+        Dynamic::Bool(b) => JsValue::from_bool(*b),
+        Dynamic::Int(n) => {
+            if n.unsigned_abs() <= (1u64 << 53) {
+                JsValue::from_f64(*n as f64)
             } else {
-                // zigzag（Rust 有符号整数）
-                self.varint((-n as i64 * 2 - 1) as u64);
+                BigInt::from(*n).into()
             }
-            return Ok(());
         }
-        if let Some(b) = v.as_bool() {
-            self.bytes.push(b as u8);
-            return Ok(());
-        }
-        if let Some(s) = v.as_string() {
-            self.string(&s);
-            return Ok(());
-        }
-        if v.is_bigint() {
-            let big = BigInt::from(v.clone());
-            let s = big
-                .to_string(10)
-                .map_err(|_| js_err("bigint 转换失败"))?
-                .as_string()
-                .unwrap_or_default();
-            let n: i128 = s.parse().map_err(|_| js_err("bigint 解析失败"))?;
-            if n >= 0 {
-                self.varint(n as u64);
+        Dynamic::UInt(n) => {
+            if *n <= (1u64 << 53) {
+                JsValue::from_f64(*n as f64)
             } else {
-                self.varint(((-n) * 2 - 1) as u64);
+                BigInt::from(*n).into()
             }
-            return Ok(());
         }
-        if let Some(arr) = v.dyn_ref::<Uint8Array>() {
-            let data = arr.to_vec();
-            self.put_bytes(&data);
-            return Ok(());
-        }
-        if let Some(arr) = v.dyn_ref::<Array>() {
-            for item in arr.iter() {
-                self.value(&item)?;
+        Dynamic::Float(f) => JsValue::from_f64(*f),
+        Dynamic::Str(s) => JsValue::from_str(s),
+        Dynamic::Bytes(b) => Uint8Array::from(b.as_slice()).into(),
+        Dynamic::Seq(items) => {
+            let arr = Array::new();
+            for item in items {
+                arr.push(&dynamic_to_js(item));
             }
-            return Ok(());
+            arr.into()
         }
-        if v.is_object() {
-            let obj = Object::from(v.clone());
-            let keys =
-                Reflect::own_keys(&obj).map_err(|e| js_err(&format!("对象键获取失败: {e:?}")))?;
-            for i in 0..keys.length() {
-                let key = keys.get(i);
-                let key_str = key.as_string().ok_or_else(|| js_err("对象键非字符串"))?;
-                let val = Reflect::get(&obj, &key)
-                    .map_err(|e| js_err(&format!("字段读取失败: {e:?}")))?;
-                self.string(&key_str);
-                self.value(&val)?;
+        Dynamic::Map(fields) => {
+            let obj = Object::new();
+            for (name, value) in fields {
+                Reflect::set(&obj, &name.clone().into(), &dynamic_to_js(value)).unwrap();
             }
-            return Ok(());
+            obj.into()
         }
-        Err(js_err("不支持的载荷类型"))
     }
 }
 
-// ======================== 解码器 ========================
-
-struct Reader<'a> {
-    bytes: &'a [u8],
-    pos: usize,
+/// JS schema 值 -> Schema（字符串 / 数组 / 对象）
+fn js_to_schema(v: &JsValue) -> Result<Schema, JsValue> {
+    if v.is_undefined() || v.is_null() {
+        return Ok(Schema::Auto);
+    }
+    if let Some(s) = v.as_string() {
+        return Ok(match s.as_str() {
+            "auto" | "json" => Schema::Auto,
+            "number" | "int" | "i64" => Schema::Number,
+            "bigint" => Schema::BigInt,
+            "u64" => Schema::U64,
+            "bool" | "boolean" => Schema::Bool,
+            "string" | "str" => Schema::Str,
+            "bytes" | "buffer" => Schema::Bytes,
+            "f64" | "float" => Schema::F64,
+            "f32" => Schema::F32,
+            "list" | "array" => Schema::List(Box::new(Schema::Auto)),
+            other => return Err(js_err(&format!("未知 schema: {other}"))),
+        });
+    }
+    if let Some(arr) = v.dyn_ref::<Array>() {
+        let mut schemas = Vec::with_capacity(arr.length() as usize);
+        for item in arr.iter() {
+            schemas.push(js_to_schema(&item)?);
+        }
+        return Ok(Schema::Seq(schemas));
+    }
+    if v.is_object() {
+        let obj = Object::from(v.clone());
+        let keys =
+            Reflect::own_keys(&obj).map_err(|e| js_err(&format!("对象键获取失败: {e:?}")))?;
+        let mut fields = Vec::with_capacity(keys.length() as usize);
+        for i in 0..keys.length() {
+            let key = keys.get(i);
+            let key_str = key.as_string().ok_or_else(|| js_err("对象键非字符串"))?;
+            let val =
+                Reflect::get(&obj, &key).map_err(|e| js_err(&format!("字段读取失败: {e:?}")))?;
+            fields.push((key_str, js_to_schema(&val)?));
+        }
+        return Ok(Schema::Map(fields));
+    }
+    Err(js_err("schema 必须是字符串 / 数组 / 对象"))
 }
 
-impl<'a> Reader<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, pos: 0 }
-    }
-
-    fn varint(&mut self) -> Result<u64, JsValue> {
-        let mut result: u64 = 0;
-        let mut shift = 0;
-        loop {
-            let b = *self
-                .bytes
-                .get(self.pos)
-                .ok_or_else(|| js_err("varint 越界"))?;
-            self.pos += 1;
-            result |= ((b & 0x7f) as u64) << shift;
-            if b & 0x80 == 0 {
-                break;
-            }
-            shift += 7;
-            if shift > 63 {
-                return Err(js_err("varint 溢出"));
-            }
-        }
-        Ok(result)
-    }
-
-    fn bytes(&mut self) -> Result<Vec<u8>, JsValue> {
-        let len = self.varint()? as usize;
-        let end = self.pos + len;
-        if end > self.bytes.len() {
-            return Err(js_err("字节数据越界"));
-        }
-        let out = self.bytes[self.pos..end].to_vec();
-        self.pos = end;
-        Ok(out)
-    }
-
-    fn string(&mut self) -> Result<String, JsValue> {
-        let data = self.bytes()?;
-        String::from_utf8(data).map_err(|e| js_err(&format!("UTF-8 解码失败: {e}")))
-    }
-}
-
-// ======================== JS 值 ↔ Message ========================
+// ======================== JS 值 <-> Message ========================
 
 fn js_to_message(v: &JsValue) -> Result<Message, JsValue> {
     let obj = Object::from(v.clone());
@@ -334,6 +355,10 @@ fn js_err(msg: &str) -> JsValue {
     JsValue::from_str(msg)
 }
 
+fn js_err_from(e: echostream_proto::Error) -> JsValue {
+    JsValue::from_str(&e.to_string())
+}
+
 fn get_str(obj: &Object, key: &str) -> Result<String, JsValue> {
     let v = Reflect::get(obj, &key.into())
         .map_err(|e| js_err(&format!("字段 {key} 读取失败: {e:?}")))?;
@@ -389,7 +414,7 @@ fn get_bytes(obj: &Object, key: &str) -> Result<Bytes, JsValue> {
 /// 客户端核心状态机（WASM 句柄）
 ///
 /// RPC id 分配/响应匹配、事件路由、服务端主动调用处理全部在 Rust 侧，
-/// JS 网络层只需：读帧 → `handle_inbound`，写帧 ← 各 build 方法产物。
+/// JS 网络层只需：读帧 -> handle_inbound，写帧 <- 各 build 方法产物。
 #[wasm_bindgen]
 pub struct ClientCoreHandle {
     core: echostream_client_core::ClientCore,
@@ -401,7 +426,7 @@ impl Default for ClientCoreHandle {
     }
 }
 
-/// 帧编码（Message → 长度前缀帧）
+/// 帧编码（Message -> 长度前缀帧）
 fn encode_frame_bytes(msg: &Message) -> Result<Vec<u8>, JsValue> {
     let payload = postcard::to_allocvec(msg).map_err(|e| js_err(&format!("编码失败: {e}")))?;
     let mut frame = Vec::with_capacity(4 + payload.len());
@@ -420,19 +445,26 @@ impl ClientCoreHandle {
         }
     }
 
-    /// 发起 RPC：返回请求帧（长度前缀 + Message），响应到达时调用 `resolve(data: Uint8Array)`
+    /// 发起 RPC：返回请求帧（长度前缀 + Message）
+    /// 响应到达时调用 resolve(data: Uint8Array, error: string | null)
     pub fn request(
         &mut self,
         name: &str,
         payload: &[u8],
         resolve: js_sys::Function,
     ) -> Result<Vec<u8>, JsValue> {
-        let (_, msg) =
-            self.core
-                .build_request(name, Bytes::copy_from_slice(payload), move |data: Bytes| {
-                    let arr = Uint8Array::from(&data[..]);
-                    let _ = resolve.call1(&JsValue::NULL, &arr.into());
-                });
+        let (_, msg) = self.core.build_request(
+            name,
+            Bytes::copy_from_slice(payload),
+            move |data: Bytes, err: Option<String>| {
+                let arr = Uint8Array::from(&data[..]);
+                let err_js = match err {
+                    Some(e) => JsValue::from_str(&e),
+                    None => JsValue::NULL,
+                };
+                let _ = resolve.call2(&JsValue::NULL, &arr.into(), &err_js);
+            },
+        );
         encode_frame_bytes(&msg)
     }
 
@@ -481,21 +513,49 @@ impl ClientCoreHandle {
         encode_frame_bytes(&msg)
     }
 
-    /// 注册事件监听（回调：`(name: string, data: Uint8Array) => void`）
-    pub fn on_event(&mut self, name: &str, callback: js_sys::Function) {
-        let name_js = JsValue::from_str(name);
-        self.core.on_event(name, move |data: Bytes| {
-            let arr = Uint8Array::from(&data[..]);
-            let _ = callback.call2(&JsValue::NULL, &name_js, &arr.into());
-        });
+    /// 构造错误响应帧（处理对端主动调用失败时回复）
+    pub fn build_error_response(&mut self, id: u64, message: &str) -> Result<Vec<u8>, JsValue> {
+        let msg = self.core.build_error_response(id, message);
+        encode_frame_bytes(&msg)
     }
 
-    /// 注册 RPC 处理器（处理对端主动调用；回调返回响应字节或 null 表示异步处理）
+    /// 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null）
+    pub fn on_stream(&mut self, name: &str, callback: js_sys::Function) {
+        self.core
+            .on_stream(name, move |frame: Option<StreamMsg>| match frame {
+                Some(f) => {
+                    let arr = Uint8Array::from(&f.data[..]);
+                    let _ = callback.call1(&JsValue::NULL, &arr.into());
+                }
+                None => {
+                    let _ = callback.call1(&JsValue::NULL, &JsValue::NULL);
+                }
+            });
+    }
+
+    /// 注册事件监听（回调：name 与 data 两个参数）
+    pub fn on_event(&mut self, name: &str, callback: js_sys::Function) {
+        let name_js = JsValue::from_str(name);
+        self.core
+            .on_event(name, move |_event_name: &str, data: Bytes| {
+                let arr = Uint8Array::from(&data[..]);
+                let _ = callback.call2(&JsValue::NULL, &name_js, &arr.into());
+            });
+    }
+
+    /// 注册 RPC 处理器（处理对端主动调用）
+    /// 回调签名：(name: string, data: Uint8Array, id: number) => Uint8Array | null
+    /// 返回 null 表示异步处理（稍后通过 build_response(id, payload) 补响应）
     pub fn on_rpc(&mut self, name: &str, callback: js_sys::Function) {
         let name_js = JsValue::from_str(name);
-        self.core.on_rpc(name, move |data: Bytes| {
+        self.core.on_rpc(name, move |id: u64, data: Bytes| {
             let arr = Uint8Array::from(&data[..]);
-            match callback.call2(&JsValue::NULL, &name_js, &arr.into()) {
+            match callback.call3(
+                &JsValue::NULL,
+                &name_js,
+                &arr.into(),
+                &JsValue::from_f64(id as f64),
+            ) {
                 Ok(ret) if !ret.is_null() && !ret.is_undefined() => {
                     let bytes = ret
                         .dyn_ref::<Uint8Array>()

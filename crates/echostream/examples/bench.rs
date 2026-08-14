@@ -26,7 +26,7 @@ async fn echo64(_session: &Session, data: Vec<u8>) -> Result<Vec<u8>> {
 async fn on_stream(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
     let mut count: u64 = 0;
     let mut bytes: u64 = 0;
-    while let Some(frame) = stream.recv().await? {
+    while let Some(frame) = stream.recv_frame().await? {
         count += 1;
         bytes += frame.data.len() as u64;
     }

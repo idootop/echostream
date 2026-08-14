@@ -42,8 +42,7 @@ async fn on_hello(_session: &Session, data: String) -> Result<()> {
 #[stream("chat")]
 async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
     let mut n = 0usize;
-    while let Some(frame) = stream.recv().await? {
-        let text = String::from_utf8_lossy(&frame.data);
+    while let Some(text) = stream.recv::<String>().await? {
         println!("E2E_STREAM_FRAME {n}: {text}");
         n += 1;
     }

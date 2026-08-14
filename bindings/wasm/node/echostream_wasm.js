@@ -206,7 +206,7 @@ const ClientCoreHandleFinalization = (typeof FinalizationRegistry === 'undefined
  * 客户端核心状态机（WASM 句柄）
  *
  * RPC id 分配/响应匹配、事件路由、服务端主动调用处理全部在 Rust 侧，
- * JS 网络层只需：读帧 → `handle_inbound`，写帧 ← 各 build 方法产物。
+ * JS 网络层只需：读帧 -> handle_inbound，写帧 <- 各 build 方法产物。
  */
 class ClientCoreHandle {
     __destroy_into_raw() {
@@ -389,6 +389,32 @@ class ClientCoreHandle {
         }
     }
     /**
+     * 构造错误响应帧（处理对端主动调用失败时回复）
+     * @param {bigint} id
+     * @param {string} message
+     * @returns {Uint8Array}
+     */
+    build_error_response(id, message) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(message, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_error_response(retptr, this.__wbg_ptr, id, ptr0, len0);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * 创建状态机
      */
     constructor() {
@@ -398,7 +424,9 @@ class ClientCoreHandle {
         return this;
     }
     /**
-     * 注册 RPC 处理器（处理对端主动调用；回调返回响应字节或 null 表示异步处理）
+     * 注册 RPC 处理器（处理对端主动调用）
+     * 回调签名：(name: string, data: Uint8Array, id: number) => Uint8Array | null
+     * 返回 null 表示异步处理（稍后通过 build_response(id, payload) 补响应）
      * @param {string} name
      * @param {Function} callback
      */
@@ -408,7 +436,8 @@ class ClientCoreHandle {
         wasm.clientcorehandle_on_rpc(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
     }
     /**
-     * 发起 RPC：返回请求帧（长度前缀 + Message），响应到达时调用 `resolve(data: Uint8Array)`
+     * 发起 RPC：返回请求帧（长度前缀 + Message）
+     * 响应到达时调用 resolve(data: Uint8Array, error: string | null)
      * @param {string} name
      * @param {Uint8Array} payload
      * @param {Function} resolve
@@ -437,7 +466,7 @@ class ClientCoreHandle {
         }
     }
     /**
-     * 注册事件监听（回调：`(name: string, data: Uint8Array) => void`）
+     * 注册事件监听（回调：name 与 data 两个参数）
      * @param {string} name
      * @param {Function} callback
      */
@@ -445,6 +474,16 @@ class ClientCoreHandle {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
         wasm.clientcorehandle_on_event(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+    }
+    /**
+     * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null）
+     * @param {string} name
+     * @param {Function} callback
+     */
+    on_stream(name, callback) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.clientcorehandle_on_stream(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
     }
 }
 if (Symbol.dispose) ClientCoreHandle.prototype[Symbol.dispose] = ClientCoreHandle.prototype.free;
@@ -502,7 +541,7 @@ function decode_i64(bytes) {
 exports.decode_i64 = decode_i64;
 
 /**
- * 解码消息：postcard 字节 → JS 对象
+ * 解码消息：postcard 字节 -> JS 对象
  * @param {Uint8Array} bytes
  * @returns {any}
  */
@@ -524,6 +563,35 @@ function decode_message(bytes) {
     }
 }
 exports.decode_message = decode_message;
+
+/**
+ * 解码载荷：postcard 字节 -> JS 值（智能推断）
+ *
+ * schema 可选（字符串 / 数组 / 对象），用于歧义场景精确解码：
+ * - "auto" | "number" | "bigint" | "u64" | "bool" | "string" | "bytes" | "f64" | "f32" | "list"
+ * - 数组 = 元组逐字段；对象 = 结构体具名字段
+ * @param {Uint8Array} bytes
+ * @param {any} schema
+ * @returns {any}
+ */
+function decode_payload(bytes, schema) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.decode_payload(retptr, ptr0, len0, addHeapObject(schema));
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+exports.decode_payload = decode_payload;
 
 /**
  * 解码 string
@@ -559,7 +627,7 @@ function decode_string(bytes) {
 exports.decode_string = decode_string;
 
 /**
- * 解码 u64（varint）
+ * 解码 u64（普通 varint）
  * @param {Uint8Array} bytes
  * @returns {number}
  */
@@ -628,12 +696,12 @@ function encode_i64(n) {
 exports.encode_i64 = encode_i64;
 
 /**
- * 编码消息：JS 对象 → postcard 字节
+ * 编码消息：JS 对象 -> postcard 字节
  *
- * 输入：`{ type, id, name, data, ... }`
- * - request/event：`{ type, id, name, data: Uint8Array }`
- * - response：`{ type, id, code, message?, data }`
- * - stream：`{ type, id, name, seq, senderTs, data }`
+ * 输入：{ type, id, name, data, ... }
+ * - request/event：{ type, id, name, data: Uint8Array }
+ * - response：{ type, id, code, message?, data }
+ * - stream：{ type, id, name, seq, senderTs, data }
  * @param {any} msg
  * @returns {Uint8Array}
  */
@@ -658,12 +726,7 @@ function encode_message(msg) {
 exports.encode_message = encode_message;
 
 /**
- * 编码载荷：JS 值 → postcard 字节
- *
- * 支持：number（非负整数 → u64 varint，负数 → i64 zigzag）、bigint、
- * string（长度前缀 + UTF-8）、Uint8Array（长度前缀 + 字节）、
- * Array（按 Rust 元组/结构体字段顺序编码，无长度前缀）、
- * Object（字段按插入序编码，等价结构体字段序）。
+ * 编码载荷：JS 值 -> postcard 字节（约定见模块文档）
  * @param {any} value
  * @returns {Uint8Array}
  */
@@ -747,6 +810,11 @@ exports.__wbg_call_3020136f7a2d6e44 = function() { return handleError(function (
     return addHeapObject(ret);
 }, arguments) };
 
+exports.__wbg_call_78f94eb02ec7f9b2 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
+    const ret = getObject(arg0).call(getObject(arg1), getObject(arg2), getObject(arg3), getObject(arg4));
+    return addHeapObject(ret);
+}, arguments) };
+
 exports.__wbg_call_c8baa5c5e72d274e = function() { return handleError(function (arg0, arg1, arg2, arg3) {
     const ret = getObject(arg0).call(getObject(arg1), getObject(arg2), getObject(arg3));
     return addHeapObject(ret);
@@ -793,6 +861,11 @@ exports.__wbg_new_1ba21ce319a06297 = function() {
     return addHeapObject(ret);
 };
 
+exports.__wbg_new_25f239778d6112b9 = function() {
+    const ret = new Array();
+    return addHeapObject(ret);
+};
+
 exports.__wbg_new_from_slice_f9c22b9153b26992 = function(arg0, arg1) {
     const ret = new Uint8Array(getArrayU8FromWasm0(arg0, arg1));
     return addHeapObject(ret);
@@ -805,6 +878,11 @@ exports.__wbg_ownKeys_f06fcde184cdc8e0 = function() { return handleError(functio
 
 exports.__wbg_prototypesetcall_dfe9b766cdc1f1fd = function(arg0, arg1, arg2) {
     Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), getObject(arg2));
+};
+
+exports.__wbg_push_7d9be8f38fc13975 = function(arg0, arg1) {
+    const ret = getObject(arg0).push(getObject(arg1));
+    return ret;
 };
 
 exports.__wbg_set_781438a03c0c3c81 = function() { return handleError(function (arg0, arg1, arg2) {
@@ -820,6 +898,18 @@ exports.__wbg_toString_49326ce0cb2d58c4 = function() { return handleError(functi
 exports.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
     // Cast intrinsic for `Ref(String) -> Externref`.
     const ret = getStringFromWasm0(arg0, arg1);
+    return addHeapObject(ret);
+};
+
+exports.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
+    // Cast intrinsic for `U64 -> Externref`.
+    const ret = BigInt.asUintN(64, arg0);
+    return addHeapObject(ret);
+};
+
+exports.__wbindgen_cast_9ae0607507abb057 = function(arg0) {
+    // Cast intrinsic for `I64 -> Externref`.
+    const ret = arg0;
     return addHeapObject(ret);
 };
 

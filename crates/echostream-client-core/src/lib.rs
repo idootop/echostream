@@ -1,7 +1,7 @@
 //! 无 I/O 客户端状态机（ClientCore）
 //!
 //! 客户端核心逻辑：RPC id 分配与响应匹配、事件监听注册与分发、
-//! 服务端主动 RPC 处理、流序号管理。
+//! 服务端主动 RPC 处理、流序号管理、入站流路由。
 //!
 //! 不依赖任何网络 I/O 与异步运行时（无 tokio / quinn），
 //! 可编译到 WASM 供 Web / 其他语言复用 —— 与 Rust 原生客户端
@@ -14,21 +14,29 @@ use echostream_proto::{
     EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
 };
 
-/// 事件监听器：接收事件载荷字节（状态机为单线程使用，无 Send 约束）
-pub type EventListener = Box<dyn Fn(Bytes)>;
+/// 事件监听器：接收事件载荷字节与事件名（状态机为单线程使用，无 Send 约束）
+pub type EventListener = Box<dyn Fn(&str, Bytes)>;
 
-/// RPC 处理器（处理对端主动调用）：返回响应载荷字节；
-/// 返回 `None` 表示由调用方异步处理（稍后通过 `build_response` 补响应）
-pub type RpcListener = Box<dyn Fn(Bytes) -> Option<Bytes>>;
+/// RPC 响应回调：参数为（响应载荷字节、错误信息）
+pub type ResponseListener = Box<dyn Fn(Bytes, Option<String>)>;
+
+/// RPC 处理器（处理对端主动调用）：参数为（请求 id、载荷字节），返回响应载荷字节；
+/// 返回 None 表示由调用方异步处理（稍后通过 build_response 补响应）
+pub type RpcListener = Box<dyn Fn(u64, Bytes) -> Option<Bytes>>;
+
+/// 入站流处理器：参数为（流帧载荷；None 表示流结束）
+pub type StreamListener = Box<dyn Fn(Option<StreamMsg>)>;
 
 /// 无 I/O 客户端状态机
 #[derive(Default)]
 pub struct ClientCore {
     next_id: u64,
-    pending: HashMap<u64, EventListener>, // 待响应的 RPC（id → 响应回调）
+    pending: HashMap<u64, ResponseListener>, // 待响应的 RPC（id -> 响应回调）
     events: HashMap<String, Vec<EventListener>>,
     rpcs: HashMap<String, RpcListener>,
-    stream_seq: HashMap<u64, u64>, // 流 id → 下一帧序号
+    streams: HashMap<String, StreamListener>,
+    stream_names: HashMap<u64, String>, // 流 id -> 名称（StreamEnd 按 id 路由）
+    stream_seq: HashMap<u64, u64>,      // 流 id -> 下一帧序号
 }
 
 impl ClientCore {
@@ -39,12 +47,13 @@ impl ClientCore {
 
     /// 发起 RPC：分配 id 并注册响应回调，返回（请求 id、请求帧）
     ///
-    /// 响应到达时通过 `handle_inbound` 触发 `on_response` 回调。
+    /// 响应到达时通过 handle_inbound 触发 on_response 回调；
+    /// 错误响应回调（空载荷、错误信息）。
     pub fn build_request(
         &mut self,
         name: &str,
         payload: Bytes,
-        on_response: impl Fn(Bytes) + 'static,
+        on_response: impl Fn(Bytes, Option<String>) + 'static,
     ) -> (u64, Message) {
         let id = self.next_id();
         self.pending.insert(id, Box::new(on_response));
@@ -77,7 +86,7 @@ impl ClientCore {
         })
     }
 
-    /// 打开流：分配流 id（后续帧用 `build_stream_frame` 发送）
+    /// 打开流：分配流 id（后续帧用 build_stream_frame 发送）
     pub fn open_stream(&mut self, _name: &str) -> u64 {
         let id = self.next_id();
         self.stream_seq.insert(id, 0);
@@ -130,7 +139,7 @@ impl ClientCore {
     }
 
     /// 注册事件监听
-    pub fn on_event(&mut self, name: &str, listener: impl Fn(Bytes) + 'static) {
+    pub fn on_event(&mut self, name: &str, listener: impl Fn(&str, Bytes) + 'static) {
         self.events
             .entry(name.to_string())
             .or_default()
@@ -138,8 +147,13 @@ impl ClientCore {
     }
 
     /// 注册 RPC 处理器（处理对端主动调用）
-    pub fn on_rpc(&mut self, name: &str, handler: impl Fn(Bytes) -> Option<Bytes> + 'static) {
+    pub fn on_rpc(&mut self, name: &str, handler: impl Fn(u64, Bytes) -> Option<Bytes> + 'static) {
         self.rpcs.insert(name.to_string(), Box::new(handler));
+    }
+
+    /// 注册入站流处理器（按流名路由；None 表示流结束）
+    pub fn on_stream(&mut self, name: &str, handler: impl Fn(Option<StreamMsg>) + 'static) {
+        self.streams.insert(name.to_string(), Box::new(handler));
     }
 
     /// 处理入站消息（网络层收到一帧后调用）
@@ -150,11 +164,9 @@ impl ClientCore {
             Message::Response(resp) => {
                 if let Some(cb) = self.pending.remove(&resp.id) {
                     if resp.code.is_success() {
-                        cb(resp.data);
+                        cb(resp.data, None);
                     } else {
-                        // 错误响应：回调收到空数据，由调用方通过错误信息处理
-                        // （简化：成功时回调数据；失败时回调空并忽略 message）
-                        cb(Bytes::new());
+                        cb(Bytes::new(), resp.message);
                     }
                 }
                 None
@@ -162,14 +174,14 @@ impl ClientCore {
             Message::Event(event) => {
                 if let Some(listeners) = self.events.get(&event.name) {
                     for l in listeners {
-                        l(event.data.clone());
+                        l(&event.name, event.data.clone());
                     }
                 }
                 None
             }
             Message::Request(req) => {
                 if let Some(handler) = self.rpcs.get(&req.name) {
-                    match handler(req.data.clone()) {
+                    match handler(req.id, req.data.clone()) {
                         Some(data) => Some(self.build_response(req.id, data)),
                         None => None, // 异步处理，稍后调用方补响应
                     }
@@ -177,7 +189,21 @@ impl ClientCore {
                     Some(self.build_error_response(req.id, "handler not found"))
                 }
             }
-            Message::Stream(_) | Message::StreamEnd(_) => None,
+            Message::Stream(frame) => {
+                self.stream_names.insert(frame.id, frame.name.clone());
+                if let Some(handler) = self.streams.get(&frame.name) {
+                    handler(Some(frame));
+                }
+                None
+            }
+            Message::StreamEnd(end) => {
+                if let Some(name) = self.stream_names.get(&end.id).cloned()
+                    && let Some(handler) = self.streams.get(&name)
+                {
+                    handler(None);
+                }
+                None
+            }
         }
     }
 
