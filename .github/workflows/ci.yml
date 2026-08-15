@@ -38,6 +38,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+          cache: pnpm
+          cache-dependency-path: |
+            bindings/node/pnpm-lock.yaml
+            bindings/web/pnpm-lock.yaml
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -68,6 +76,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+          cache: pnpm
+          cache-dependency-path: |
+            bindings/node/pnpm-lock.yaml
+            bindings/web/pnpm-lock.yaml
       - uses: actions/setup-node@v4
         with:
           node-version: 22
