@@ -97,6 +97,10 @@
       EXAMPLES 示例导航（middleware_stack）、plugins/middlewares README 表格、core README（endpoint().build() 新 API）
 - [x] **Step 9 全量验证**：cargo test 32 passed / 0 failed；5 个示例（simple_rpc/bidi/plugin_stack/middleware_stack/
       discovery）全部通过；Node/Web 包 typecheck + build + 测试全绿；跨端矩阵 6/6 全 PASS（Python 绑定重建后）
+- [x] **Python 环境迁移 uv + Python 3.14**：bindings/python 改用 uv venv（.venv，Python 3.14.6 homebrew），
+      maturin develop 构建安装成功（原 conda 3.12 的 -mmacosx-version-min=11.0 与 ring 15.2 不匹配问题消失）；
+      cross_e2e.ts 的 Python 对端改用 venv 解释器；_native.so 更新为 3.14 构建；
+      README 记录 uv 流程与 extension-module 不可直接 cargo build 的说明（Undefined symbols 为固有行为）
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

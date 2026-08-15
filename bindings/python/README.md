@@ -5,12 +5,30 @@ EchoStream 的 Python 绑定（PyO3）—— 基于 QUIC 的高性能双向 RPC 
 完整 client + server 能力，与 Rust 核心共享同一份实现；**载荷自动编解码**（纯 Python postcard 实现），
 业务侧直接传 Python 原生值。
 
-## 安装
+## 安装（uv + Python 3.14）
+
+推荐用 uv 管理 Python 环境（本仓库开发环境为最新稳定 Python 3.14）：
 
 ```bash
-maturin build --release
-pip install target/wheels/echostream-*.whl
+cd bindings/python
+uv venv .venv --python 3.14          # 创建 venv（uv 自动选择本机/托管 3.14）
+uv pip install maturin
+VIRTUAL_ENV=.venv .venv/bin/maturin develop   # 构建并安装（editable）
+# 注意：若 shell 有 conda 环境变量，先 env -u CONDA_PREFIX
 ```
+
+发布构建：
+
+```bash
+cd bindings/python
+.venv/bin/maturin build --release
+.venv/bin/pip install target/wheels/echostream-*.whl
+```
+
+> ⚠️ 不要直接 `cargo build -p echostream-python`：pyo3 `extension-module` 模式的扩展
+> 不链接 libpython（符号由解释器运行时提供），直接 cargo 链接必然报 Undefined symbols；
+> 构建必须经 maturin（pyproject.toml 已配置 build-backend）。
+> 若需 cargo 侧单独验证 Rust 代码，CI 使用 `--exclude echostream-python`。
 
 ## 客户端
 
@@ -55,6 +73,6 @@ bool → 单字节；str/bytes → 长度前缀；list/tuple → 元组字段序
 ## 测试
 
 ```bash
-python3 tests/test_e2e.py   # server + client 闭环
-python3 tests/cross_server.py [端口]  # 跨端矩阵对端
+.venv/bin/python tests/test_e2e.py          # server + client 闭环
+.venv/bin/python tests/cross_server.py [端口]  # 跨端矩阵对端
 ```

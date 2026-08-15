@@ -16,6 +16,11 @@ dist/
 *.tsbuildinfo
 package-lock.json
 
+# Python（uv 管理）
+.venv/
+*.so
+!bindings/python/python/echostream/_native.so
+
 # 构建产物
 bindings/python/python/echostream/*.so
 !bindings/python/python/echostream/_native.so

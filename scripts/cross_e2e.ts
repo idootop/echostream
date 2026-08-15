@@ -23,6 +23,8 @@ const NODE_SERVER = path.join(root, "bindings/node/dist/test/cross_server.js");
 const NODE_CLIENT = path.join(root, "bindings/node/dist/test/cross_client.js");
 const PY_SERVER = path.join(root, "bindings/python/tests/cross_server.py");
 const PY_CLIENT = path.join(root, "bindings/python/tests/cross_client.py");
+// Python 解释器：uv 管理的项目 venv（bindings/python/.venv，Python 3.14）
+const PY_BIN = path.join(root, "bindings/python/.venv/bin/python");
 
 // 前置：编译 Rust 通用对端
 if (!fs.existsSync(RUST_PEER)) {
@@ -101,10 +103,10 @@ async function runCombo(name: string, port: number, serverCmd: string, clientCmd
 const combos: Combo[] = [
   { name: "rust-server_node-client", port: 5110, server: '"' + RUST_PEER + '" --server --addr 127.0.0.1:5110', client: 'node "' + NODE_CLIENT + '" 127.0.0.1:5110' },
   { name: "node-server_rust-client", port: 5111, server: 'node "' + NODE_SERVER + '" 5111', client: '"' + RUST_PEER + '" --client --addr 127.0.0.1:5111' },
-  { name: "rust-server_python-client", port: 5112, server: '"' + RUST_PEER + '" --server --addr 127.0.0.1:5112', client: 'python3 "' + PY_CLIENT + '" 127.0.0.1:5112' },
-  { name: "python-server_rust-client", port: 5113, server: 'python3 "' + PY_SERVER + '" 5113', client: '"' + RUST_PEER + '" --client --addr 127.0.0.1:5113' },
-  { name: "node-server_python-client", port: 5114, server: 'node "' + NODE_SERVER + '" 5114', client: 'python3 "' + PY_CLIENT + '" 127.0.0.1:5114' },
-  { name: "python-server_node-client", port: 5115, server: 'python3 "' + PY_SERVER + '" 5115', client: 'node "' + NODE_CLIENT + '" 127.0.0.1:5115' },
+  { name: "rust-server_python-client", port: 5112, server: '"' + RUST_PEER + '" --server --addr 127.0.0.1:5112', client: '"' + PY_BIN + '" "' + PY_CLIENT + '" 127.0.0.1:5112' },
+  { name: "python-server_rust-client", port: 5113, server: '"' + PY_BIN + '" "' + PY_SERVER + '" 5113', client: '"' + RUST_PEER + '" --client --addr 127.0.0.1:5113' },
+  { name: "node-server_python-client", port: 5114, server: 'node "' + NODE_SERVER + '" 5114', client: '"' + PY_BIN + '" "' + PY_CLIENT + '" 127.0.0.1:5114' },
+  { name: "python-server_node-client", port: 5115, server: '"' + PY_BIN + '" "' + PY_SERVER + '" 5115', client: 'node "' + NODE_CLIENT + '" 127.0.0.1:5115' },
 ];
 
 let pass = 0;
