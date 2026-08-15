@@ -100,7 +100,8 @@
 - [x] **Python 环境迁移 uv + Python 3.14**：bindings/python 改用 uv venv（.venv，Python 3.14.6 homebrew），
       maturin develop 构建安装成功（原 conda 3.12 的 -mmacosx-version-min=11.0 与 ring 15.2 不匹配问题消失）；
       cross_e2e.ts 的 Python 对端改用 venv 解释器；_native.so 更新为 3.14 构建；
-      README 记录 uv 流程与 extension-module 不可直接 cargo build 的说明（Undefined symbols 为固有行为）
+      README 记录 uv 流程与 extension-module 不可直接 cargo build 的说明（Undefined symbols 为固有行为）；
+      仓库根 uv python pin 3.14（.python-version 提交），uv run 全仓默认 3.14 + 项目 .venv
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

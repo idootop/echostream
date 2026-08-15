@@ -7,15 +7,17 @@ EchoStream 的 Python 绑定（PyO3）—— 基于 QUIC 的高性能双向 RPC 
 
 ## 安装（uv + Python 3.14）
 
-推荐用 uv 管理 Python 环境（本仓库开发环境为最新稳定 Python 3.14）：
+本仓库已用 uv pin 到最新稳定 Python（仓库根 `.python-version` = 3.14），
+所有 `uv run` 命令自动使用该版本与项目 `.venv`：
 
 ```bash
 cd bindings/python
-uv venv .venv --python 3.14          # 创建 venv（uv 自动选择本机/托管 3.14）
+uv venv .venv                          # 创建 venv（按 .python-version 选择 3.14）
 uv pip install maturin
-VIRTUAL_ENV=.venv .venv/bin/maturin develop   # 构建并安装（editable）
-# 注意：若 shell 有 conda 环境变量，先 env -u CONDA_PREFIX
+uv run maturin develop                 # 构建并安装（editable；自动用 .venv）
 ```
+
+> 若 shell 中有 conda 环境变量，直接 `uv run` 即可（uv 不依赖 VIRTUAL_ENV/CONDA_PREFIX 探测）。
 
 发布构建：
 
