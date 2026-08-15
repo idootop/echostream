@@ -71,7 +71,8 @@
 - [x] **Step 1 客户端生命周期**：Client 补齐 on_connect 回调（与 on_disconnect 对称）、
       is_connected() 实时连接状态、回调按 HookId 注册/取消注册（add_on_connect/remove_on_connect 等）；
       连接池辅助连接断开仅静默移除，不再误触发断开回调；plugin_stack 示例改用 on_connect 重连后重新认证
-- [ ] **Step 2 ClientBuilder build 模式**：endpoint(s) 注入 + build()，transport connect 对齐
+- [x] **Step 2 ClientBuilder build 模式**：endpoint(s) 注入 + build()（未注入连接返回错误），
+      transport connect 改为 endpoints().build() 对齐（from_endpoint(s) 保留为便捷方法）
 - [ ] **Step 3 流增强**：StreamReceiver 实现 futures::Stream、客户端流分发 spawn（修复长流阻塞事件接收）、
       流生命周期中间件 hook（open/frame/close）
 - [ ] **Step 4 中间件洋葱重构**：Next 链（超时/错误处理可包裹下游）+ on_connect/on_disconnect hook

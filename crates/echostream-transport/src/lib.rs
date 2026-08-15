@@ -76,7 +76,8 @@ mod ext {
             for _ in 0..self.pool_size() {
                 conns.push(Arc::new(connect(addr).await?));
             }
-            Ok(self.from_endpoints(conns))
+            // 注入连接并走 ClientBuilder::build（未注入连接时报错）
+            self.endpoints(conns).build()
         }
     }
 }

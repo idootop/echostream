@@ -260,6 +260,8 @@ pub struct ClientBuilder {
     on_connect: Vec<LifecycleHook>,
     on_disconnect: Vec<LifecycleHook>,
     pool_size: usize,
+    /// 已注入的传输层连接（`endpoint(s)`；`build` 时使用）
+    endpoints: Vec<Arc<dyn Endpoint>>,
 }
 
 impl Default for ClientBuilder {
@@ -277,6 +279,7 @@ impl ClientBuilder {
             on_connect: Vec::new(),
             on_disconnect: Vec::new(),
             pool_size: 1,
+            endpoints: Vec::new(),
         }
     }
 
@@ -331,6 +334,32 @@ impl ClientBuilder {
     pub fn add_stream<H: StreamHandler>(self, handler: H) -> Self {
         self.router.add_stream(handler);
         self
+    }
+
+    /// 注入传输层连接（QUIC / WebTransport 等；单连接），供 `build` 使用
+    pub fn endpoint(mut self, conn: Arc<dyn Endpoint>) -> Self {
+        self.endpoints = vec![conn];
+        self
+    }
+
+    /// 注入多个传输层连接（连接池），供 `build` 使用
+    pub fn endpoints(mut self, conns: Vec<Arc<dyn Endpoint>>) -> Self {
+        self.endpoints = conns;
+        self
+    }
+
+    /// 构建客户端（需先通过 `endpoint(s)` 注入连接；未注入返回错误）
+    ///
+    /// 等价于 `from_endpoint(s)`，但返回 `Result` 便于错误传播；
+    /// 便捷 `connect`（QUIC）在传输层扩展 trait 中基于本方法实现。
+    pub fn build(mut self) -> echostream_proto::Result<Client> {
+        if self.endpoints.is_empty() {
+            return Err(echostream_proto::Error::InvalidParameter(
+                "未指定连接（endpoint() / endpoints() / from_endpoint()）".into(),
+            ));
+        }
+        let conns = std::mem::take(&mut self.endpoints);
+        Ok(self.from_endpoints(conns))
     }
 
     /// 使用传输层连接（QUIC / WebTransport 等；单连接）
