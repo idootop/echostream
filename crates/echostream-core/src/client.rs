@@ -1,10 +1,13 @@
 //! 客户端：连接、发起 RPC / 事件 / 流，并处理服务端主动调用
 //!
 //! 支持连接池（`ClientBuilder::pool(n)`）：多 QUIC 连接分摊流控窗口并
-//! 跨核扩展（quinn 单连接为单任务处理），RPC 按轮询分发；事件与流走主连接。
+//! 跨核扩展吞吐（quinn 单连接为单任务处理），RPC 按轮询分发；事件与流走主连接。
+//!
+//! 生命周期：连接建立触发 `on_connect`、断开触发 `on_disconnect`（主动关闭除外），
+//! 回调支持按 `HookId` 取消注册；`is_connected` 反映连接实时状态。
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use echostream_proto::Message;
 use echostream_proto::endpoint::Endpoint;
@@ -16,8 +19,11 @@ use crate::router::Router;
 use crate::session::Session;
 use crate::stream::StreamSender;
 
-/// 断开回调（连接断开时触发，主动关闭除外）
-type DisconnectHook = Arc<dyn Fn(&Client) + Send + Sync>;
+/// 客户端生命周期回调（连接建立 / 断开时触发）
+type LifecycleHook = Arc<dyn Fn(&Client) + Send + Sync>;
+
+/// 回调注册 id（`add_on_*` 返回，供 `remove_on_*` 取消注册）
+pub type HookId = u64;
 
 /// 客户端（连接池：默认单连接）
 #[derive(Clone)]
@@ -29,8 +35,14 @@ struct ClientInner {
     /// 连接池（RPC 轮询分发；事件/流走主连接 sessions[0]）
     sessions: std::sync::RwLock<Vec<Session>>,
     router: Arc<Router>,
-    /// 断开回调（重连插件等使用）
-    on_disconnect: std::sync::RwLock<Vec<DisconnectHook>>,
+    /// 连接是否在线（主连接接收循环运行中为 true）
+    connected: AtomicBool,
+    /// 连接建立回调（主连接建立 / 重连成功时触发）
+    on_connect: std::sync::RwLock<Vec<(HookId, LifecycleHook)>>,
+    /// 断开回调（连接断开时触发，主动关闭除外）
+    on_disconnect: std::sync::RwLock<Vec<(HookId, LifecycleHook)>>,
+    /// 回调 id 分配器
+    next_hook_id: AtomicU64,
     /// 是否已主动关闭（关闭后不再触发断开回调）
     closed: AtomicBool,
     /// RPC 轮询游标
@@ -52,6 +64,11 @@ impl Client {
     /// 会话数（连接池大小）
     pub fn session_count(&self) -> usize {
         self.inner.sessions.read().unwrap().len()
+    }
+
+    /// 连接是否在线（主连接存活；`close` / 断线后为 false）
+    pub fn is_connected(&self) -> bool {
+        self.inner.connected.load(Ordering::Relaxed)
     }
 
     /// 轮询选取会话（RPC 分发；连接池场景跨连接扩展）
@@ -84,21 +101,71 @@ impl Client {
         for s in old {
             s.close();
         }
-        tokio::spawn(receive_loop(self.clone(), new_session));
+        self.inner.connected.store(true, Ordering::Relaxed);
+        tokio::spawn(receive_loop(self.clone(), new_session, true));
+        self.notify_connect();
     }
 
-    /// 注册断开回调（连接断开时触发；自动重连插件等使用）
-    pub fn add_on_disconnect(&self, f: impl Fn(&Client) + Send + Sync + 'static) {
-        self.inner.on_disconnect.write().unwrap().push(Arc::new(f));
+    // ==================== 生命周期回调（可取消注册） ====================
+
+    /// 注册连接建立回调，返回注册 id（`remove_on_connect` 取消注册）
+    pub fn add_on_connect(&self, f: impl Fn(&Client) + Send + Sync + 'static) -> HookId {
+        let id = self.inner.next_hook_id.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .on_connect
+            .write()
+            .unwrap()
+            .push((id, Arc::new(f)));
+        id
     }
 
-    /// 触发断开回调（接收循环结束时调用；主动关闭后不触发）
+    /// 取消注册连接建立回调
+    pub fn remove_on_connect(&self, id: HookId) {
+        self.inner
+            .on_connect
+            .write()
+            .unwrap()
+            .retain(|(i, _)| *i != id);
+    }
+
+    /// 注册断开回调（连接断开时触发；自动重连插件等使用），返回注册 id
+    pub fn add_on_disconnect(&self, f: impl Fn(&Client) + Send + Sync + 'static) -> HookId {
+        let id = self.inner.next_hook_id.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .on_disconnect
+            .write()
+            .unwrap()
+            .push((id, Arc::new(f)));
+        id
+    }
+
+    /// 取消注册断开回调
+    pub fn remove_on_disconnect(&self, id: HookId) {
+        self.inner
+            .on_disconnect
+            .write()
+            .unwrap()
+            .retain(|(i, _)| *i != id);
+    }
+
+    /// 触发连接建立回调（连接建立 / 重连成功时调用）
+    fn notify_connect(&self) {
+        if !self.is_connected() {
+            return;
+        }
+        let hooks = self.inner.on_connect.read().unwrap().clone();
+        for (_, h) in hooks {
+            h(self);
+        }
+    }
+
+    /// 触发断开回调（主连接接收循环结束时调用；主动关闭后不触发）
     fn notify_disconnect(&self) {
         if self.is_closed() {
             return;
         }
         let hooks = self.inner.on_disconnect.read().unwrap().clone();
-        for h in hooks {
+        for (_, h) in hooks {
             h(self);
         }
     }
@@ -156,6 +223,7 @@ impl Client {
     /// 主动关闭连接（关闭后断开回调不再触发）
     pub fn close(&self) {
         self.inner.closed.store(true, Ordering::Relaxed);
+        self.inner.connected.store(false, Ordering::Relaxed);
         let sessions = self.inner.sessions.read().unwrap().clone();
         for s in sessions {
             s.close();
@@ -189,7 +257,8 @@ impl Client {
 pub struct ClientBuilder {
     router: Arc<Router>,
     timeout: std::time::Duration,
-    on_disconnect: Vec<DisconnectHook>,
+    on_connect: Vec<LifecycleHook>,
+    on_disconnect: Vec<LifecycleHook>,
     pool_size: usize,
 }
 
@@ -205,6 +274,7 @@ impl ClientBuilder {
         Self {
             router: Arc::new(Router::default()),
             timeout: std::time::Duration::from_secs(30),
+            on_connect: Vec::new(),
             on_disconnect: Vec::new(),
             pool_size: 1,
         }
@@ -221,7 +291,16 @@ impl ClientBuilder {
         (Box::new(plugin) as Box<dyn ClientPlugin>).install(self)
     }
 
-    /// 注册断开回调（连接断开时触发）
+    /// 注册连接建立回调（连接建立 / 重连成功时触发）
+    pub fn on_connect<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Client) + Send + Sync + 'static,
+    {
+        self.on_connect.push(Arc::new(f));
+        self
+    }
+
+    /// 注册断开回调（连接断开时触发；主动关闭不触发）
     pub fn on_disconnect<F>(mut self, f: F) -> Self
     where
         F: Fn(&Client) + Send + Sync + 'static,
@@ -268,18 +347,43 @@ impl ClientBuilder {
                 Session::with_timeout(ctx.next_session_id(), conn, ctx.clone(), self.timeout)
             })
             .collect();
+        // 回调 id：构建期注册的钩子从 1 开始编号，运行时注册延续
+        let mut next_hook_id = 1u64;
+        let on_connect: Vec<(HookId, LifecycleHook)> = self
+            .on_connect
+            .into_iter()
+            .map(|f| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, f)
+            })
+            .collect();
+        let on_disconnect: Vec<(HookId, LifecycleHook)> = self
+            .on_disconnect
+            .into_iter()
+            .map(|f| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, f)
+            })
+            .collect();
         let client = Client {
             inner: Arc::new(ClientInner {
                 sessions: std::sync::RwLock::new(sessions.clone()),
                 router: self.router,
-                on_disconnect: std::sync::RwLock::new(self.on_disconnect),
+                connected: AtomicBool::new(true),
+                on_connect: std::sync::RwLock::new(on_connect),
+                on_disconnect: std::sync::RwLock::new(on_disconnect),
+                next_hook_id: AtomicU64::new(next_hook_id),
                 closed: AtomicBool::new(false),
                 next_session: AtomicUsize::new(0),
             }),
         };
-        for session in sessions {
-            tokio::spawn(receive_loop(client.clone(), session));
+        for (i, session) in sessions.into_iter().enumerate() {
+            // 主连接（sessions[0]）驱动生命周期；池中辅助连接断开仅静默移除
+            tokio::spawn(receive_loop(client.clone(), session, i == 0));
         }
+        client.notify_connect();
         client
     }
 
@@ -290,7 +394,10 @@ impl ClientBuilder {
 }
 
 /// 客户端接收循环：处理服务端主动发来的 RPC / 事件 / 流
-async fn receive_loop(client: Client, session: Session) {
+///
+/// primary：主连接（sessions[0]）——负责生命周期状态与回调；
+/// 连接池辅助连接断开时仅从池中移除，不触发断开回调。
+async fn receive_loop(client: Client, session: Session, primary: bool) {
     let conn = session.conn_arc();
     // 数据报接收任务（不可靠事件通道）
     if conn.supports_datagram() {
@@ -365,6 +472,17 @@ async fn receive_loop(client: Client, session: Session) {
             }
         }
     }
-    tracing::debug!("连接已断开");
-    client.notify_disconnect();
+    tracing::debug!("连接已断开 (session {})", session.id());
+    if primary {
+        client.inner.connected.store(false, Ordering::Relaxed);
+        client.notify_disconnect();
+    } else if !client.is_closed() {
+        // 连接池辅助连接断开：静默移除，不触发生命周期回调
+        client
+            .inner
+            .sessions
+            .write()
+            .unwrap()
+            .retain(|s| s.id() != session.id());
+    }
 }

@@ -50,19 +50,23 @@ async fn run_client() -> Result<()> {
         .timeout(Duration::from_secs(2))
         // 自动重连：断线后指数退避重连
         .plugin(ReconnectPlugin::new(ADDR).base_delay(Duration::from_millis(200)))
-        // 重连成功后自动重新认证
-        .on_disconnect(|c: &Client| {
-            DISCONNECTED.store(true, Ordering::Relaxed);
-            let c = c.clone();
-            tokio::spawn(async move {
-                loop {
-                    if authenticate(&c.session(), TOKEN).await.is_ok() {
-                        println!("[client] 已重新认证");
-                        break;
+        // 重连成功后自动重新认证（on_connect 在初始连接与重连成功时均触发）
+        .on_connect(|c: &Client| {
+            if DISCONNECTED.swap(false, Ordering::Relaxed) {
+                let c = c.clone();
+                tokio::spawn(async move {
+                    loop {
+                        if authenticate(&c.session(), TOKEN).await.is_ok() {
+                            println!("[client] 已重新认证");
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(200)).await;
                     }
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                }
-            });
+                });
+            }
+        })
+        .on_disconnect(|_c: &Client| {
+            DISCONNECTED.store(true, Ordering::Relaxed);
         })
         .connect(ADDR)
         .await?;

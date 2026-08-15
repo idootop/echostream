@@ -64,6 +64,24 @@
       （服务端主动 RPC 后广播/事件丢失）
 - [ ] 发布 v0.1（需 crates.io / npm / PyPI 凭据，按 RELEASE.md 执行）
 
+### 🔄 P7 API 体系化完善（2026-08，进行中）
+
+目标：接口完备、一致、稳定，达到生产可发布标准。逐步提交，每步留痕。
+
+- [x] **Step 1 客户端生命周期**：Client 补齐 on_connect 回调（与 on_disconnect 对称）、
+      is_connected() 实时连接状态、回调按 HookId 注册/取消注册（add_on_connect/remove_on_connect 等）；
+      连接池辅助连接断开仅静默移除，不再误触发断开回调；plugin_stack 示例改用 on_connect 重连后重新认证
+- [ ] **Step 2 ClientBuilder build 模式**：endpoint(s) 注入 + build()，transport connect 对齐
+- [ ] **Step 3 流增强**：StreamReceiver 实现 futures::Stream、客户端流分发 spawn（修复长流阻塞事件接收）、
+      流生命周期中间件 hook（open/frame/close）
+- [ ] **Step 4 中间件洋葱重构**：Next 链（超时/错误处理可包裹下游）+ on_connect/on_disconnect hook
+- [ ] **Step 5 Router 运行时管理**：事件/流/中间件按 token 移除、注册表查询；Server 暴露 router 与运行时钩子
+- [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）
+- [ ] **Step 7 新插件**：metrics / heartbeat（规划落地）
+- [ ] **Step 8 文档同步**：README / ARCHITECTURE / EXAMPLES / plugins / middlewares
+- [ ] **Step 9 全量验证**：workspace 构建 + 测试 + 示例 + 跨端矩阵
+- [ ] **Step 10 PROGRESS 收尾 + 最终提交**
+
 ## 设计决策记录
 
 - 传输接口（Endpoint/FrameIo/FrameRead/FrameWrite/Listener）放 proto 层，避免依赖环
