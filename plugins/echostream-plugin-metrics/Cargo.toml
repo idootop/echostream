@@ -1,0 +1,14 @@
+[package]
+name = "echostream-plugin-metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 指标插件：请求统计与性能指标收集（中间件 + 快照 RPC）"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }

@@ -89,8 +89,10 @@
         wasm 胶水外部化并复制 dist/wasm，HTML 引用更新；编解码/状态机/e2e 测试全绿
       - scripts：cross_e2e.ts TS 化；CI 更新为 pnpm 安装 + tsdown 构建 + dist 路径测试
       - .gitignore 增加 node_modules/ dist/（pnpm 管理，package-lock.json 忽略）
-- [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）
-- [ ] **Step 7 新插件**：metrics / heartbeat（规划落地）
+- [x] **Step 6 新中间件**：timeout（链级超时，RPC 回 TIMEOUT）/ error（错误归一化，业务错误码透传）/
+      transform（请求/响应载荷转换）；transform 行为单测覆盖（经真实 dispatch 链路验证）
+- [x] **Step 7 新插件**：metrics（请求统计 + 快照 RPC metrics.snapshot）/ heartbeat（客户端周期心跳 +
+      服务端失活扫描清理）；middleware_stack 示例全链路验证（transform/超时/错误归一化/指标/心跳 12s 保活）
 - [ ] **Step 8 文档同步**：README / ARCHITECTURE / EXAMPLES / plugins / middlewares
 - [ ] **Step 9 全量验证**：workspace 构建 + 测试 + 示例 + 跨端矩阵
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**

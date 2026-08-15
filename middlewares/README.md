@@ -6,7 +6,10 @@
 
 | 中间件 | 功能 |
 |--------|------|
-| echostream-middleware-logging | 结构化消息日志 |
+| echostream-middleware-logging | 结构化消息日志（含处理耗时） |
+| echostream-middleware-timeout | 中间件链与处理器执行超时控制（RPC 回 TIMEOUT） |
+| echostream-middleware-error | 下游错误统一归一化（业务错误码透传） |
+| echostream-middleware-transform | 请求/响应载荷转换（压缩、加密、格式包装等） |
 
 ## 开发指南
 

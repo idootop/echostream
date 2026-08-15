@@ -13,7 +13,8 @@ import fs from "node:fs";
 import os from "node:os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(__dirname, "..");
+// 脚本位于 scripts/dist/，仓库根向上两级
+const root = path.resolve(__dirname, "../..");
 const LOG_DIR = path.join(os.tmpdir(), "echostream-cross-e2e");
 
 const RUST_PEER = path.join(root, "target/release/examples/e2e_peer");

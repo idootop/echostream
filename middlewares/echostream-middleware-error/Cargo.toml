@@ -1,0 +1,13 @@
+[package]
+name = "echostream-middleware-error"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 错误处理中间件：下游错误统一归一化为错误响应"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }

@@ -291,8 +291,13 @@ dependencies = [
  "echostream-core",
  "echostream-derive",
  "echostream-discovery",
+ "echostream-middleware-error",
  "echostream-middleware-logging",
+ "echostream-middleware-timeout",
+ "echostream-middleware-transform",
  "echostream-plugin-auth",
+ "echostream-plugin-heartbeat",
+ "echostream-plugin-metrics",
  "echostream-plugin-reconnect",
  "echostream-plugin-retry",
  "echostream-proto",
@@ -340,6 +345,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "echostream-middleware-error"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "echostream-core",
+ "echostream-proto",
+ "tracing",
+]
+
+[[package]]
 name = "echostream-middleware-logging"
 version = "0.1.0"
 dependencies = [
@@ -347,6 +363,29 @@ dependencies = [
  "echostream-core",
  "echostream-proto",
  "tracing",
+]
+
+[[package]]
+name = "echostream-middleware-timeout"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "echostream-core",
+ "echostream-proto",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echostream-middleware-transform"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "echostream-core",
+ "echostream-proto",
+ "postcard",
+ "tokio",
 ]
 
 [[package]]
@@ -372,6 +411,30 @@ dependencies = [
  "echostream-core",
  "echostream-proto",
  "postcard",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echostream-plugin-heartbeat"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "echostream-core",
+ "echostream-proto",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "echostream-plugin-metrics"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "echostream-core",
+ "echostream-proto",
  "serde",
  "tokio",
  "tracing",

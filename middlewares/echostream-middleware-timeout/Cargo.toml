@@ -1,0 +1,13 @@
+[package]
+name = "echostream-middleware-timeout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 超时中间件：中间件链与处理器执行超时控制"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }

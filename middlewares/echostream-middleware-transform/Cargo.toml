@@ -1,0 +1,16 @@
+[package]
+name = "echostream-middleware-transform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 数据转换中间件：请求/响应载荷转换（压缩、加密、格式包装等）"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+postcard = { workspace = true }

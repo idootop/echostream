@@ -1,0 +1,14 @@
+[package]
+name = "echostream-plugin-heartbeat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 心跳保活插件：客户端周期心跳 + 服务端失活会话清理"
+
+[dependencies]
+echostream-proto = { workspace = true }
+echostream-core = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }

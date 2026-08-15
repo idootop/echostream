@@ -28,6 +28,11 @@ echostream-plugin-auth = { path = "../../plugins/echostream-plugin-auth" }
 echostream-plugin-retry = { path = "../../plugins/echostream-plugin-retry" }
 echostream-plugin-reconnect = { path = "../../plugins/echostream-plugin-reconnect" }
 echostream-middleware-logging = { path = "../../middlewares/echostream-middleware-logging" }
+echostream-middleware-timeout = { path = "../../middlewares/echostream-middleware-timeout" }
+echostream-middleware-error = { path = "../../middlewares/echostream-middleware-error" }
+echostream-middleware-transform = { path = "../../middlewares/echostream-middleware-transform" }
+echostream-plugin-metrics = { path = "../../plugins/echostream-plugin-metrics" }
+echostream-plugin-heartbeat = { path = "../../plugins/echostream-plugin-heartbeat" }
 bytes = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true }
