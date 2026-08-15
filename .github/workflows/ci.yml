@@ -13,7 +13,7 @@ jobs:
     name: Rust Check & Clippy & Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -33,20 +33,20 @@ jobs:
     name: WASM 编解码与状态机验证
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
           run_install: false
           cache: pnpm
-          cache-dependency-path: |
+          cache_dependency_path: |
             bindings/node/pnpm-lock.yaml
             bindings/web/pnpm-lock.yaml
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: 构建 WASM（release）
@@ -73,18 +73,18 @@ jobs:
     name: Node.js binding 端到端
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 9
           run_install: false
           cache: pnpm
-          cache-dependency-path: |
+          cache_dependency_path: |
             bindings/node/pnpm-lock.yaml
             bindings/web/pnpm-lock.yaml
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: 构建 Node binding
