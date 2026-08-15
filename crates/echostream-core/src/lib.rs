@@ -53,7 +53,7 @@ pub use middleware::{Middleware, Next};
 #[cfg(feature = "io")]
 pub use plugin::{ClientPlugin, ServerPlugin};
 #[cfg(feature = "io")]
-pub use router::Router;
+pub use router::{Router, Token};
 #[cfg(feature = "io")]
 pub use server::{Server, ServerBuilder};
 #[cfg(feature = "io")]

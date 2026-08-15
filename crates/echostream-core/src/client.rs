@@ -14,8 +14,9 @@ use echostream_proto::endpoint::Endpoint;
 
 use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
+use crate::middleware::Middleware;
 use crate::plugin::ClientPlugin;
-use crate::router::Router;
+use crate::router::{Router, Token};
 use crate::session::Session;
 use crate::stream::StreamSender;
 
@@ -234,21 +235,51 @@ impl Client {
         self.inner.closed.load(Ordering::Relaxed)
     }
 
-    // ==================== 运行时注册（动态添加处理器） ====================
+    // ==================== 运行时注册（动态添加 / 按 token 移除处理器） ====================
 
-    /// 运行时注册事件监听
-    pub fn add_event_handler<H: DynEventHandler>(&self, handler: H) {
-        self.inner.router.add_event(handler);
+    /// 处理器注册表（运行时注册 RPC / 事件 / 流 / 中间件与查询）
+    pub fn router(&self) -> &Arc<Router> {
+        &self.inner.router
     }
 
-    /// 运行时注册 RPC 处理器（处理服务端主动调用）
-    pub fn add_rpc_handler<H: DynRpcHandler>(&self, handler: H) {
-        self.inner.router.add_rpc(handler);
+    /// 运行时注册事件监听，返回注册 token（remove_event_handler 取消注册）
+    pub fn add_event_handler<H: DynEventHandler>(&self, handler: H) -> Token {
+        self.inner.router.add_event(handler)
     }
 
-    /// 运行时注册流处理器
-    pub fn add_stream_handler<H: StreamHandler>(&self, handler: H) {
-        self.inner.router.add_stream(handler);
+    /// 取消注册事件监听（按注册 token）
+    pub fn remove_event_handler(&self, token: Token) -> bool {
+        self.inner.router.remove_event(token)
+    }
+
+    /// 运行时注册 RPC 处理器（处理服务端主动调用），返回注册 token
+    pub fn add_rpc_handler<H: DynRpcHandler>(&self, handler: H) -> Token {
+        self.inner.router.add_rpc(handler)
+    }
+
+    /// 取消注册 RPC 处理器（按注册 token）
+    pub fn remove_rpc_handler(&self, token: Token) -> bool {
+        self.inner.router.remove_rpc(token)
+    }
+
+    /// 运行时注册流处理器，返回注册 token
+    pub fn add_stream_handler<H: StreamHandler>(&self, handler: H) -> Token {
+        self.inner.router.add_stream(handler)
+    }
+
+    /// 取消注册流处理器（按注册 token）
+    pub fn remove_stream_handler(&self, token: Token) -> bool {
+        self.inner.router.remove_stream(token)
+    }
+
+    /// 运行时添加中间件，返回注册 token
+    pub fn add_middleware<M: Middleware>(&self, middleware: M) -> Token {
+        self.inner.router.add_middleware(middleware)
+    }
+
+    /// 取消注册中间件（按注册 token）
+    pub fn remove_middleware(&self, token: Token) -> bool {
+        self.inner.router.remove_middleware(token)
     }
 }
 

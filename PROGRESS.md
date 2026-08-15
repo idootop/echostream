@@ -79,7 +79,9 @@
 - [x] **Step 4 中间件洋葱重构**：Middleware::handle(session, msg, next) 洋葱链（tower/axum 同款），
       终端在链内执行（handler 错误可被中间件捕获/归一化）；新增 on_connect/on_disconnect 生命周期钩子
       （Server 每会话触发、Client 主连接触发）；logging/auth 中间件与示例全部迁移
-- [ ] **Step 5 Router 运行时管理**：事件/流/中间件按 token 移除、注册表查询；Server 暴露 router 与运行时钩子
+- [x] **Step 5 Router 运行时管理**：add_* 返回 Token，remove_rpc/event/stream/middleware 按 token 精确移除；
+      rpc_names/event_names/stream_names/middleware_names 注册表查询；Server/Client 暴露 router() + 运行时注册/移除；
+      Server 钩子支持运行时注册与取消注册（add/remove_on_*）；router_test 覆盖链序/拦截/改名/生命周期（16 组全绿）
 - [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）
 - [ ] **Step 7 新插件**：metrics / heartbeat（规划落地）
 - [ ] **Step 8 文档同步**：README / ARCHITECTURE / EXAMPLES / plugins / middlewares

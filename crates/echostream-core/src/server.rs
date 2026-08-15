@@ -13,20 +13,24 @@ use crate::plugin::ServerPlugin;
 use crate::router::Router;
 use crate::session::Session;
 
-/// 生命周期钩子类型：同步回调（异步逻辑可在回调内 `tokio::spawn`）
+/// 生命周期钩子类型：同步回调（异步逻辑可在回调内 tokio::spawn）
 type Hook<T> = Arc<dyn Fn(&T) + Send + Sync>;
 
-/// 服务端
+/// 服务端（hook 支持运行时注册 / 按 HookId 取消注册）
 pub struct Server {
     listener: Arc<dyn Listener>,
     router: Arc<Router>,
     ctx: Arc<ServerContext>,
-    on_start: Vec<Hook<ServerContext>>,
-    on_stop: Vec<Hook<ServerContext>>,
-    on_connect: Vec<Hook<Session>>,
-    on_disconnect: Vec<Hook<Session>>,
+    on_start: std::sync::RwLock<Vec<(HookId, Hook<ServerContext>)>>,
+    on_stop: std::sync::RwLock<Vec<(HookId, Hook<ServerContext>)>>,
+    on_connect: std::sync::RwLock<Vec<(HookId, Hook<Session>)>>,
+    on_disconnect: std::sync::RwLock<Vec<(HookId, Hook<Session>)>>,
+    next_hook_id: std::sync::atomic::AtomicU64,
     shutdown_signal: tokio::sync::Notify,
 }
+
+/// 回调注册 id（add_on_* 返回，供 remove_on_* 取消注册）
+pub type HookId = u64;
 
 impl Server {
     /// 本地监听地址
@@ -34,9 +38,89 @@ impl Server {
         self.listener.local_addr().ok()
     }
 
+    /// 处理器注册表（运行时注册 RPC / 事件 / 流 / 中间件）
+    pub fn router(&self) -> &Arc<Router> {
+        &self.router
+    }
+
+    /// 服务端全局上下文
+    pub fn ctx(&self) -> &Arc<ServerContext> {
+        &self.ctx
+    }
+
+    /// 运行时注册 RPC 处理器
+    pub fn add_rpc<H: DynRpcHandler>(&self, handler: H) {
+        self.router.add_rpc(handler);
+    }
+
+    /// 运行时注册事件监听器
+    pub fn add_event<H: DynEventHandler>(&self, handler: H) {
+        self.router.add_event(handler);
+    }
+
+    /// 运行时注册流处理器
+    pub fn add_stream<H: StreamHandler>(&self, handler: H) {
+        self.router.add_stream(handler);
+    }
+
+    // ==================== 生命周期钩子（运行时注册 / 取消注册） ====================
+
+    /// 注册服务启动钩子，返回注册 id
+    pub fn add_on_start(&self, f: impl Fn(&ServerContext) + Send + Sync + 'static) -> HookId {
+        self.register_hook(&self.on_start, f)
+    }
+
+    /// 取消注册服务启动钩子
+    pub fn remove_on_start(&self, id: HookId) {
+        self.on_start.write().unwrap().retain(|(i, _)| *i != id);
+    }
+
+    /// 注册服务关闭钩子，返回注册 id
+    pub fn add_on_stop(&self, f: impl Fn(&ServerContext) + Send + Sync + 'static) -> HookId {
+        self.register_hook(&self.on_stop, f)
+    }
+
+    /// 取消注册服务关闭钩子
+    pub fn remove_on_stop(&self, id: HookId) {
+        self.on_stop.write().unwrap().retain(|(i, _)| *i != id);
+    }
+
+    /// 注册客户端连接钩子，返回注册 id
+    pub fn add_on_connect(&self, f: impl Fn(&Session) + Send + Sync + 'static) -> HookId {
+        self.register_hook(&self.on_connect, f)
+    }
+
+    /// 取消注册客户端连接钩子
+    pub fn remove_on_connect(&self, id: HookId) {
+        self.on_connect.write().unwrap().retain(|(i, _)| *i != id);
+    }
+
+    /// 注册客户端断开钩子，返回注册 id
+    pub fn add_on_disconnect(&self, f: impl Fn(&Session) + Send + Sync + 'static) -> HookId {
+        self.register_hook(&self.on_disconnect, f)
+    }
+
+    /// 取消注册客户端断开钩子
+    pub fn remove_on_disconnect(&self, id: HookId) {
+        self.on_disconnect
+            .write()
+            .unwrap()
+            .retain(|(i, _)| *i != id);
+    }
+
+    fn register_hook<T>(
+        &self,
+        slots: &std::sync::RwLock<Vec<(HookId, Hook<T>)>>,
+        f: impl Fn(&T) + Send + Sync + 'static,
+    ) -> HookId {
+        let id = self.next_hook_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        slots.write().unwrap().push((id, Arc::new(f)));
+        id
+    }
+
     /// 运行服务（阻塞直到 `shutdown` 被调用）
     pub async fn run(&self) -> echostream_proto::Result<()> {
-        for hook in &self.on_start {
+        for (_, hook) in self.on_start.read().unwrap().clone() {
             hook(&self.ctx);
         }
 
@@ -55,15 +139,15 @@ impl Server {
                             // 中间件连接钩子
                             self.router.run_connect_hooks(&session).await;
                             let s = session.clone();
-                            for hook in &self.on_connect {
+                            for (_, hook) in self.on_connect.read().unwrap().clone() {
                                 hook(&s);
                             }
-                            let hooks = self.on_disconnect.clone();
+                            let hooks = self.on_disconnect.read().unwrap().clone();
                             let r = self.router.clone();
                             let c = self.ctx.clone();
                             tokio::spawn(async move {
                                 handle_connection(session, r, c).await;
-                                for hook in &hooks {
+                                for (_, hook) in hooks {
                                     hook(&s);
                                 }
                             });
@@ -75,7 +159,7 @@ impl Server {
             }
         }
 
-        for hook in &self.on_stop {
+        for (_, hook) in self.on_stop.read().unwrap().clone() {
             hook(&self.ctx);
         }
         Ok(())
@@ -336,14 +420,53 @@ impl ServerBuilder {
                 }
             },
         };
+        // 构建期注册的钩子编号从 1 开始，运行时注册延续
+        let mut next_hook_id = 1u64;
+        let on_start = self
+            .on_start
+            .into_iter()
+            .map(|h| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, h)
+            })
+            .collect::<Vec<_>>();
+        let on_stop = self
+            .on_stop
+            .into_iter()
+            .map(|h| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, h)
+            })
+            .collect::<Vec<_>>();
+        let on_connect = self
+            .on_connect
+            .into_iter()
+            .map(|h| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, h)
+            })
+            .collect::<Vec<_>>();
+        let on_disconnect = self
+            .on_disconnect
+            .into_iter()
+            .map(|h| {
+                let id = next_hook_id;
+                next_hook_id += 1;
+                (id, h)
+            })
+            .collect::<Vec<_>>();
         Ok(Server {
             listener,
             router: self.router,
             ctx: self.ctx,
-            on_start: self.on_start,
-            on_stop: self.on_stop,
-            on_connect: self.on_connect,
-            on_disconnect: self.on_disconnect,
+            on_start: std::sync::RwLock::new(on_start),
+            on_stop: std::sync::RwLock::new(on_stop),
+            on_connect: std::sync::RwLock::new(on_connect),
+            on_disconnect: std::sync::RwLock::new(on_disconnect),
+            next_hook_id: std::sync::atomic::AtomicU64::new(next_hook_id),
             shutdown_signal: tokio::sync::Notify::new(),
         })
     }

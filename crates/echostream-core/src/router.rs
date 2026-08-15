@@ -5,6 +5,7 @@
 //! 在此统一触发各中间件。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
@@ -21,7 +22,10 @@ use crate::stream::StreamReceiver;
 /// 返回最终结果（RPC 为响应帧；事件 / 流为 None 表示已消费）
 type Terminal = Arc<dyn Fn(Message) -> BoxFuture<'static, Result<Option<Message>, Error>> + Send + Sync>;
 
-/// 处理器注册表（线程安全，支持运行时注册/移除）
+/// 注册 token（add_* 返回，供 remove_* 精确移除对应注册项）
+pub type Token = u64;
+
+/// 处理器注册表（线程安全，支持运行时注册 / 按 token 移除 / 注册表查询）
 #[derive(Clone, Default)]
 pub struct Router {
     inner: Arc<RouterInner>,
@@ -29,54 +33,166 @@ pub struct Router {
 
 #[derive(Default)]
 struct RouterInner {
-    rpc: RwLock<HashMap<String, Arc<dyn DynRpcHandler>>>,
-    event: RwLock<HashMap<String, Vec<Arc<dyn DynEventHandler>>>>,
-    stream: RwLock<HashMap<String, Arc<dyn StreamHandler>>>,
-    middlewares: RwLock<Vec<Arc<dyn Middleware>>>,
+    rpc: RwLock<HashMap<String, (Token, Arc<dyn DynRpcHandler>)>>,
+    event: RwLock<HashMap<String, Vec<(Token, Arc<dyn DynEventHandler>)>>>,
+    stream: RwLock<HashMap<String, (Token, Arc<dyn StreamHandler>)>>,
+    middlewares: RwLock<Vec<(Token, Arc<dyn Middleware>)>>,
+    next_token: AtomicU64,
 }
 
 impl Router {
-    /// 注册 RPC 处理器
-    pub fn add_rpc<H: DynRpcHandler>(&self, handler: H) {
+    /// 注册 RPC 处理器，返回注册 token（remove_rpc 精确移除）
+    pub fn add_rpc<H: DynRpcHandler>(&self, handler: H) -> Token {
+        let token = self.inner.next_token.fetch_add(1, Ordering::Relaxed);
         self.inner
             .rpc
             .write()
             .unwrap()
-            .insert(handler.name().to_string(), Arc::new(handler));
+            .insert(handler.name().to_string(), (token, Arc::new(handler)));
+        token
     }
 
-    /// 注册事件处理器（同名事件支持多个监听器，按注册顺序执行）
-    pub fn add_event<H: DynEventHandler>(&self, handler: H) {
+    /// 注册事件处理器（同名事件支持多个监听器，按注册顺序执行），返回注册 token
+    pub fn add_event<H: DynEventHandler>(&self, handler: H) -> Token {
+        let token = self.inner.next_token.fetch_add(1, Ordering::Relaxed);
         self.inner
             .event
             .write()
             .unwrap()
             .entry(handler.name().to_string())
             .or_default()
-            .push(Arc::new(handler));
+            .push((token, Arc::new(handler)));
+        token
     }
 
-    /// 注册流处理器
-    pub fn add_stream<H: StreamHandler>(&self, handler: H) {
+    /// 注册流处理器，返回注册 token
+    pub fn add_stream<H: StreamHandler>(&self, handler: H) -> Token {
+        let token = self.inner.next_token.fetch_add(1, Ordering::Relaxed);
         self.inner
             .stream
             .write()
             .unwrap()
-            .insert(handler.name().to_string(), Arc::new(handler));
+            .insert(handler.name().to_string(), (token, Arc::new(handler)));
+        token
     }
 
-    /// 添加中间件（按添加顺序执行；洋葱链）
-    pub fn add_middleware<M: Middleware>(&self, middleware: M) {
+    /// 添加中间件（按添加顺序执行；洋葱链），返回注册 token
+    pub fn add_middleware<M: Middleware>(&self, middleware: M) -> Token {
+        let token = self.inner.next_token.fetch_add(1, Ordering::Relaxed);
         self.inner
             .middlewares
             .write()
             .unwrap()
-            .push(Arc::new(middleware));
+            .push((token, Arc::new(middleware)));
+        token
+    }
+
+    /// 移除 RPC 处理器（按注册 token），返回是否移除成功
+    pub fn remove_rpc(&self, token: Token) -> bool {
+        let removed = self
+            .inner
+            .rpc
+            .read()
+            .unwrap()
+            .values()
+            .any(|(t, _)| *t == token);
+        self.inner
+            .rpc
+            .write()
+            .unwrap()
+            .retain(|_, (t, _)| *t != token);
+        removed
+    }
+
+    /// 移除事件监听器（按注册 token）
+    pub fn remove_event(&self, token: Token) -> bool {
+        let mut found = false;
+        let mut guard = self.inner.event.write().unwrap();
+        for listeners in guard.values_mut() {
+            listeners.retain(|(t, _)| {
+                if *t == token {
+                    found = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        guard.retain(|_, listeners| !listeners.is_empty());
+        found
+    }
+
+    /// 移除流处理器（按注册 token），返回是否移除成功
+    pub fn remove_stream(&self, token: Token) -> bool {
+        let removed = self
+            .inner
+            .stream
+            .read()
+            .unwrap()
+            .values()
+            .any(|(t, _)| *t == token);
+        self.inner
+            .stream
+            .write()
+            .unwrap()
+            .retain(|_, (t, _)| *t != token);
+        removed
+    }
+
+    /// 移除中间件（按注册 token）
+    pub fn remove_middleware(&self, token: Token) -> bool {
+        let mut found = false;
+        self.inner
+            .middlewares
+            .write()
+            .unwrap()
+            .retain(|(t, _)| {
+                if *t == token {
+                    found = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        found
+    }
+
+    // ==================== 注册表查询 ====================
+
+    /// 已注册的 RPC 方法名列表
+    pub fn rpc_names(&self) -> Vec<String> {
+        self.inner.rpc.read().unwrap().keys().cloned().collect()
+    }
+
+    /// 已注册的事件名列表
+    pub fn event_names(&self) -> Vec<String> {
+        self.inner.event.read().unwrap().keys().cloned().collect()
+    }
+
+    /// 已注册的流名列表
+    pub fn stream_names(&self) -> Vec<String> {
+        self.inner.stream.read().unwrap().keys().cloned().collect()
+    }
+
+    /// 已注册的中间件名称列表（按执行顺序）
+    pub fn middleware_names(&self) -> Vec<String> {
+        self.inner
+            .middlewares
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(_, m)| m.name().to_string())
+            .collect()
     }
 
     /// 获取 RPC 处理器（供非流式传输分派）
     pub fn get_rpc(&self, name: &str) -> Option<Arc<dyn DynRpcHandler>> {
-        self.inner.rpc.read().unwrap().get(name).cloned()
+        self.inner
+            .rpc
+            .read()
+            .unwrap()
+            .get(name)
+            .map(|(_, h)| h.clone())
     }
 
     /// 是否存在流处理器
@@ -96,7 +212,15 @@ impl Router {
         msg: Message,
         terminal: Terminal,
     ) -> Result<Option<Message>, Error> {
-        let chain = Arc::new(self.inner.middlewares.read().unwrap().clone());
+        let chain = Arc::new(
+            self.inner
+                .middlewares
+                .read()
+                .unwrap()
+                .iter()
+                .map(|(_, m)| m.clone())
+                .collect::<Vec<_>>(),
+        );
         let next = Next {
             chain,
             session: session.clone(),
@@ -109,7 +233,7 @@ impl Router {
     /// 触发所有中间件的连接建立钩子
     pub async fn run_connect_hooks(&self, session: &Session) {
         let mws = self.inner.middlewares.read().unwrap().clone();
-        for mw in mws {
+        for (_, mw) in mws {
             if let Err(e) = mw.on_connect(session).await {
                 tracing::debug!("中间件 {} on_connect 出错: {e}", mw.name());
             }
@@ -119,7 +243,7 @@ impl Router {
     /// 触发所有中间件的连接断开钩子
     pub async fn run_disconnect_hooks(&self, session: &Session) {
         let mws = self.inner.middlewares.read().unwrap().clone();
-        for mw in mws {
+        for (_, mw) in mws {
             if let Err(e) = mw.on_disconnect(session).await {
                 tracing::debug!("中间件 {} on_disconnect 出错: {e}", mw.name());
             }
@@ -140,7 +264,7 @@ impl Router {
                     return Ok(Some(req_msg));
                 };
                 // 按（可能被中间件修改的）方法名查找处理器
-                let handler = this.inner.rpc.read().unwrap().get(&m.name).cloned();
+                let handler = this.inner.rpc.read().unwrap().get(&m.name).map(|(_, h)| h.clone());
                 let result = match handler {
                     Some(handler) => handler.handle_encoded(&session, m.data.clone()).await,
                     None => Err(Error::HandlerNotFound(m.name.clone())),
@@ -203,7 +327,12 @@ impl Router {
                     return Ok(Some(evt_msg));
                 };
                 // 按（可能被中间件修改的）事件名查找监听器
-                let handlers = this.inner.event.read().unwrap().get(&e.name).cloned();
+                let handlers = this.inner
+                    .event
+                    .read()
+                    .unwrap()
+                    .get(&e.name)
+                    .map(|listeners| listeners.iter().map(|(_, h)| h.clone()).collect::<Vec<_>>());
                 if let Some(handlers) = handlers {
                     for handler in handlers {
                         if let Err(err) = handler.handle_encoded(&session, e.data.clone()).await {
@@ -241,7 +370,12 @@ impl Router {
                 let Some(recv) = recv.lock().unwrap().take() else {
                     return Err(Error::Protocol("流处理器被重复调用".into()));
                 };
-                let handler = this.inner.stream.read().unwrap().get(&name).cloned();
+                let handler = this.inner
+                    .stream
+                    .read()
+                    .unwrap()
+                    .get(&name)
+                    .map(|(_, h)| h.clone());
                 match handler {
                     Some(handler) => {
                         let receiver = StreamReceiver::new(recv, frame.clone());
