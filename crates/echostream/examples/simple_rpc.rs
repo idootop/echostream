@@ -26,11 +26,19 @@ async fn on_hello(session: &Session, data: String) -> Result<()> {
 }
 
 /// Stream：处理客户端推送的 "chat" 流
+///
+/// 主流消费方式二选一：
+/// - 强类型循环：stream.recv::<String>() 逐帧拉取
+/// - futures::Stream：into_stream_typed() 可组合 map/filter 等组合子
 #[stream("chat")]
-async fn on_chat(session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_chat(session: &Session, stream: StreamReceiver) -> Result<()> {
+    use futures::StreamExt;
     println!("[server] 流 chat 开始 <- {}", session.peer_addr());
+    let frames = stream.into_stream_typed::<String>();
+    futures::pin_mut!(frames);
     let mut seq = 0u64;
-    while let Some(text) = stream.recv::<String>().await? {
+    while let Some(text) = frames.next().await {
+        let text = text?;
         println!("[server] 流帧 #{seq}: {text}");
         seq += 1;
     }

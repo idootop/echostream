@@ -73,8 +73,9 @@
       连接池辅助连接断开仅静默移除，不再误触发断开回调；plugin_stack 示例改用 on_connect 重连后重新认证
 - [x] **Step 2 ClientBuilder build 模式**：endpoint(s) 注入 + build()（未注入连接返回错误），
       transport connect 改为 endpoints().build() 对齐（from_endpoint(s) 保留为便捷方法）
-- [ ] **Step 3 流增强**：StreamReceiver 实现 futures::Stream、客户端流分发 spawn（修复长流阻塞事件接收）、
-      流生命周期中间件 hook（open/frame/close）
+- [x] **Step 3 流增强**：StreamReceiver::into_stream / into_stream_typed（futures::Stream 拉取模式，
+      与组合子互通）；修复客户端流分发未 spawn 导致长流阻塞事件/主动 RPC 接收的 bug；
+      流消费模式文档化（句柄拉取为主 / 回调推送为绑定侧原语）；单测覆盖（10 passed）
 - [ ] **Step 4 中间件洋葱重构**：Next 链（超时/错误处理可包裹下游）+ on_connect/on_disconnect hook
 - [ ] **Step 5 Router 运行时管理**：事件/流/中间件按 token 移除、注册表查询；Server 暴露 router 与运行时钩子
 - [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）

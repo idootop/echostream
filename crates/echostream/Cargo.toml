@@ -20,6 +20,7 @@ serde = { workspace = true }
 
 echostream-derive = { workspace = true, optional = true }
 echostream-discovery = { workspace = true, optional = true }
+futures = "0.3"
 
 [dev-dependencies]
 tokio = { workspace = true }

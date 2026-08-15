@@ -491,7 +491,13 @@ async fn receive_loop(client: Client, session: Session, primary: bool) {
                             client.inner.router.dispatch_event(&session, event).await;
                         }
                         Ok(Some(Message::Stream(frame))) => {
-                            client.inner.router.dispatch_stream(&session, recv, frame).await;
+                            // spawn 处理：长生命周期流（持续推送）不得阻塞接收循环，
+                            // 否则事件 / 服务端主动 RPC 会被饿死
+                            let c = client.clone();
+                            let s = session.clone();
+                            tokio::spawn(async move {
+                                c.inner.router.dispatch_stream(&s, recv, frame).await;
+                            });
                         }
                         Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
                         Ok(None) | Err(_) => break,
