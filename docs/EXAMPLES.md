@@ -12,6 +12,7 @@
 | bidi | 服务端主动调用客户端、事件监听、中间件、生命周期钩子 | cargo run -p echostream --example bidi |
 | discovery | mDNS 服务发现（ServiceInfo + Discovery）与连接 | cargo run -p echostream --example discovery |
 | plugin_stack | 插件栈：认证 / 重连 / RPC 重试 / 日志 全链路 | cargo run -p echostream --example plugin_stack |
+| middleware_stack | 中间件栈：超时 / 错误归一化 / 转换 / 指标 / 心跳 全链路 | cargo run -p echostream --example middleware_stack |
 | chat_server | 常驻服务端（Node/Python 绑定测试用） | cargo run -p echostream --example chat_server |
 | e2e_peer | 跨端矩阵通用对端（server / client 双角色） | cargo run -p echostream --release --example e2e_peer -- --server/--client |
 | bench | 基准测试（RPC 延迟/吞吐、复用通道、连接池、事件、流） | cargo run -p echostream --example bench --release |

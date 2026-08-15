@@ -33,8 +33,8 @@
 | echostream-transport | QUIC（quic 默认：端点/流/数据报/证书 + ServerBuilderExt::bind / ClientBuilderExt::connect）、WebSocket（ws：WsServer）、WebTransport（web：WebServer） | core、proto、quinn/tokio-tungstenite/wtransport（按 feature） |
 | echostream-derive | #[rpc]/#[event]/#[stream] | syn/quote/proc-macro2 |
 | echostream-discovery | mDNS 发现：Discovery::advertise/discover/discover_stream + ServiceInfo（builder） | proto、mdns-sd、tokio |
-| echostream-middleware-* | 数据面扩展集合：logging 等 | core |
-| echostream-plugin-* | 控制面扩展集合：reconnect/auth/retry 等 | core（reconnect 另依赖 transport quic） |
+| echostream-middleware-* | 数据面扩展集合：logging/timeout/error/transform | core |
+| echostream-plugin-* | 控制面扩展集合：auth/reconnect/retry/metrics/heartbeat | core（reconnect 另依赖 transport quic） |
 | echostream | 统一入口：re-export + prelude + 宏 + QUIC 便捷 API | 全部 |
 | bindings/* | 各语言绑定（自动编解码，底层 API 另提供） | 各自工具链 |
 

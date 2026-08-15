@@ -112,8 +112,8 @@ echostream                 统一入口（重导出 + prelude + 宏 + QUIC 便�
 ├── echostream-transport        传输层：QUIC（默认）/ WebSocket / WebTransport 三 feature
 ├── echostream-derive           过程宏：#[rpc] / #[event] / #[stream]
 ├── echostream-discovery        mDNS 局域网服务发现（可选）
-├── plugins/                    基础插件：auth / reconnect / retry
-├── middlewares/                基础中间件：logging
+├── plugins/                    基础插件：auth / reconnect / retry / metrics / heartbeat
+├── middlewares/                基础中间件：logging / timeout / error / transform
 └── bindings/                   Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）/ Web（浏览器 SDK）
 ```
 
