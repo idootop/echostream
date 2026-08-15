@@ -26,21 +26,21 @@ enum Mode {
 
 /// RPC：add(a, b) -> a + b
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     println!("E2E_RPC add({a}, {b})");
     Ok(a + b)
 }
 
 /// Event：接收客户端 hello 事件（载荷为 postcard 编码的 String）
 #[event("hello")]
-async fn on_hello(_session: &Session, data: String) -> Result<()> {
+async fn on_hello(data: String) -> Result<()> {
     println!("E2E_EVENT_RECEIVED: {data:?}");
     Ok(())
 }
 
 /// Stream：接收客户端 chat 流（帧载荷为原始 UTF-8 字节）
 #[stream("chat")]
-async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_chat(mut stream: StreamReceiver) -> Result<()> {
     let mut n = 0usize;
     while let Some(text) = stream.recv::<String>().await? {
         println!("E2E_STREAM_FRAME {n}: {text}");

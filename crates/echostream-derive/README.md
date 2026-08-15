@@ -20,18 +20,21 @@ EchoStream 过程宏：将普通 Rust async 函数转换为框架 Handler（零�
 ```rust
 use echostream::prelude::*;
 
+// 省略 Session：不需要会话时最简洁
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
+// 需要会话时显式注入
 #[rpc]                       // 方法名为 "login"
 async fn login(session: &Session, req: LoginReq) -> Result<LoginResp> {
     Ok(LoginResp::from(session, req))
 }
 
+// 无参数形式
 #[rpc("server.status")]
-async fn status(_session: &Session) -> Result<Status> { /* ... */ }
+async fn status() -> Result<Status> { /* ... */ }
 ```
 
 ### #[event(name)] —— 单向事件监听
@@ -57,7 +60,7 @@ async fn on_hello(session: &Session, msg: String) -> Result<()> {
 use echostream::prelude::*;
 
 #[stream("chat")]
-async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_chat(mut stream: StreamReceiver) -> Result<()> {
     while let Some(text) = stream.recv::<String>().await? {
         println!("{text}");
     }

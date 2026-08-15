@@ -11,7 +11,7 @@ use echostream::prelude::*;
 
 /// RPC：客户端调用服务端
 #[rpc("ping")]
-async fn ping(_session: &Session, msg: String) -> Result<String> {
+async fn ping(msg: String) -> Result<String> {
     Ok(format!("pong: {msg}"))
 }
 
@@ -29,14 +29,14 @@ async fn on_join(session: &Session, user: String) -> Result<()> {
 
 /// RPC：服务端主动调用客户端
 #[rpc("client_hello")]
-async fn client_hello(_session: &Session, user: String) -> Result<String> {
+async fn client_hello(user: String) -> Result<String> {
     println!("[client] 收到服务端调用 client_hello({user})");
     Ok(format!("hello, server! I'm {user}"))
 }
 
 /// Event：接收服务端推送的欢迎事件
 #[event("welcome")]
-async fn on_welcome(_session: &Session, msg: String) -> Result<()> {
+async fn on_welcome(msg: String) -> Result<()> {
     println!("[client] 收到服务端事件 welcome: {msg}");
     Ok(())
 }

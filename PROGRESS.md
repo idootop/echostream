@@ -102,6 +102,13 @@
       cross_e2e.ts 的 Python 对端改用 venv 解释器；_native.so 更新为 3.14 构建；
       README 记录 uv 流程与 extension-module 不可直接 cargo build 的说明（Undefined symbols 为固有行为）；
       仓库根 uv python pin 3.14（.python-version 提交），uv run 全仓默认 3.14 + 项目 .venv
+- [x] **derive 宏签名体系修复**：`#[rpc]`/`#[event]`/`#[stream]` 此前仅当用户显式写 Session 参数
+      才能编译（trait 签名固定而宏缺省时不生成参数）；现统一生成下划线参数（_session/_req/_data），
+      四种 RPC 签名（&Session+Req / Req / &Session / 无参）与事件/流省略 Session 全部可用且无 unused 警告；
+      新增 handler_forms 示例端到端覆盖 10 种签名形态；全部 examples 去掉多余 _session
+- [x] **README 导入审查**：主 README 三端示例的 import 从注释移入代码块并剔除未使用组件
+      （Node 的 ServerBuilder 等）；derive/echostream/transport/core README 同步新宏签名与
+      endpoint().build() API；node README 测试命令改 pnpm 并修正跨端矩阵路径；web README 文件列表改 .ts
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

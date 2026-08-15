@@ -59,8 +59,8 @@ await server.run();
 ## 测试
 
 ```bash
-npm test                 # codec 交叉验证 + server/client 闭环
-npm run test:cross       # 跨端矩阵（需 Rust/Python 对端）
+pnpm test                # codec 交叉验证 + server/client 闭环
+node ../scripts/dist/cross_e2e.js   # 跨端矩阵（需 Rust/Python 对端，先 pnpm --dir ../scripts build）
 ```
 
 ## 示例

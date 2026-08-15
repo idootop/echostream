@@ -10,11 +10,11 @@ use syn::{FnArg, ItemFn, LitStr, PatType, ReturnType, Type, parse_macro_input};
 
 /// 将函数标记为 RPC 处理器
 ///
-/// 支持签名：
-/// - `async fn(&Session, Req) -> Result<Resp>`
-/// - `async fn(Req) -> Result<Resp>`
-/// - `async fn(&Session) -> Result<Resp>`
-/// - `async fn() -> Result<Resp>`
+/// Session 参数可写可不写（不写则自动省略，处理器内不需要会话时最简洁）：
+/// - `async fn(&Session, Req) -> Result<Resp>` —— 需要会话
+/// - `async fn(Req) -> Result<Resp>` —— 省略会话
+/// - `async fn(&Session) -> Result<Resp>` —— 无请求参数
+/// - `async fn() -> Result<Resp>` —— 最简形式
 ///
 /// 属性可指定方法名：`#[rpc("user.login")]`，默认使用函数名。
 #[proc_macro_attribute]
@@ -24,7 +24,9 @@ pub fn rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// 将函数标记为事件处理器
 ///
-/// 支持签名：`async fn(&Session, Data)` / `async fn(Data)` 等，返回 `Result<()>` 或 `()`。
+/// Session 参数同样可省略（见 `#[rpc]`），返回 `Result<()>` 或 `()`：
+/// - `async fn(&Session, Data)` / `async fn(Data)`
+/// - `async fn(&Session)` / `async fn()` —— 无载荷事件
 #[proc_macro_attribute]
 pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand(HandlerKind::Event, attr, item)
@@ -32,7 +34,9 @@ pub fn event(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// 将函数标记为流处理器
 ///
-/// 签名：`async fn(&Session, StreamReceiver) -> Result<()>`
+/// 必须包含 `StreamReceiver` 参数；Session 参数可省略：
+/// - `async fn(&Session, StreamReceiver) -> Result<()>`
+/// - `async fn(StreamReceiver) -> Result<()>`
 #[proc_macro_attribute]
 pub fn stream(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand(HandlerKind::Stream, attr, item)
@@ -108,9 +112,8 @@ fn expand_rpc(
     let invoke = build_invoke("rpc", &func.sig.ident, &session, &data, is_result);
 
     let req_ty = data.clone().unwrap_or_else(|| syn::parse_quote!(()));
-    let session_param = session
-        .as_ref()
-        .map(|_| quote! { session: &::echostream::Session, });
+    // trait 签名固定（session + req），缺省参数用下划线避免 unused 警告
+    let (session_param, data_param) = impl_params("rpc", &session, &data);
 
     let expanded = quote! {
         #func
@@ -127,7 +130,7 @@ fn expand_rpc(
                 #handler_name
             }
 
-            async fn handle(&self, #session_param req: Self::Req) -> ::echostream::Result<Self::Resp> {
+            async fn handle(&self, #session_param #data_param) -> ::echostream::Result<Self::Resp> {
                 #invoke
             }
         }
@@ -153,9 +156,8 @@ fn expand_event(
     let invoke = build_invoke("event", &func.sig.ident, &session, &data, is_result);
 
     let data_ty = data.clone().unwrap_or_else(|| syn::parse_quote!(()));
-    let session_param = session
-        .as_ref()
-        .map(|_| quote! { session: &::echostream::Session, });
+    // trait 签名固定（session + data），缺省参数用下划线避免 unused 警告
+    let (session_param, data_param) = impl_params("event", &session, &data);
 
     let expanded = quote! {
         #func
@@ -171,7 +173,7 @@ fn expand_event(
                 #handler_name
             }
 
-            async fn handle(&self, #session_param data: Self::Data) -> ::echostream::Result<()> {
+            async fn handle(&self, #session_param #data_param) -> ::echostream::Result<()> {
                 #invoke
                 Ok(())
             }
@@ -200,9 +202,8 @@ fn expand_stream(
     let (_, is_result) = parse_return(&func.sig.output);
     let invoke = build_invoke("stream", &func.sig.ident, &session, &data, is_result);
 
-    let session_param = session
-        .as_ref()
-        .map(|_| quote! { session: &::echostream::Session, });
+    // trait 签名固定（session + stream），缺省 session 用下划线避免 unused 警告
+    let (session_param, _) = impl_params("stream", &session, &data);
 
     let expanded = quote! {
         #func
@@ -226,6 +227,30 @@ fn expand_stream(
 }
 
 // ======================== 辅助函数 ========================
+
+/// 生成 impl 的 handle 参数（trait 签名固定为 session + 数据参数）
+///
+/// 用户函数缺省 session / 数据参数时，生成的 impl 参数以下划线命名，
+/// 既满足 trait 签名又避免 unused 警告。
+fn impl_params(
+    kind: &str,
+    session: &Option<Type>,
+    data: &Option<Type>,
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let session_param = match session {
+        Some(_) => quote! { session: &::echostream::Session, },
+        None => quote! { _session: &::echostream::Session, },
+    };
+    let data_param = match (kind, data) {
+        ("rpc", Some(_)) => quote! { req: Self::Req },
+        ("rpc", None) => quote! { _req: Self::Req },
+        ("event", Some(_)) => quote! { data: Self::Data },
+        ("event", None) => quote! { _data: Self::Data },
+        // stream：必须含 StreamReceiver（expand 已校验）
+        _ => quote! { stream: ::echostream::StreamReceiver },
+    };
+    (session_param, data_param)
+}
 
 /// 构建业务调用语句
 fn build_invoke(

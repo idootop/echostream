@@ -8,7 +8,7 @@ use echostream::prelude::*;
 
 /// RPC：加法
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (u64, u64)) -> Result<u64> {
+async fn add((a, b): (u64, u64)) -> Result<u64> {
     Ok(a + b)
 }
 

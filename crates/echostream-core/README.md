@@ -23,7 +23,7 @@ EchoStream 核心框架：RPC / Event / Stream 调度、会话管理与服务端
 ## 快速开始
 
 ```rust
-use echostream_core::{ServerBuilder, ClientBuilder, Session};
+use echostream_core::{ServerBuilder, ClientBuilder};
 use echostream_proto::Result;
 
 let server = ServerBuilder::new()

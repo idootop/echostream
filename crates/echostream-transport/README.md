@@ -63,4 +63,4 @@ let server = WebServerBuilder::new()
 ## 自定义传输
 
 实现 proto 的 Endpoint / FrameIo / Listener 后，通过
-ServerBuilder::listener() / ClientBuilder::from_endpoint() 注入即可。
+ServerBuilder::listener() / ClientBuilder::endpoint().build() 注入即可。

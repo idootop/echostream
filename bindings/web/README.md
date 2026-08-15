@@ -57,11 +57,11 @@ JS 只负责网络层 —— 与 Rust 服务端的线缆格式单一事实来源
 
 ## 文件
 
-- `echostream.ts` — SDK 入口源码（tsdown 构建到 `dist/echostream.js`）
-- `wasm/` — Rust 编译的协议核心（编解码 + 状态机）
-- `index.html` / `e2e.html` — 浏览器 demo 与 E2E 页面
-- `echostream.test.mjs` / `client_core.test.mjs` — 编解码与状态机交叉验证
-- `e2e.sdk.test.mjs` — SDK 端到端（Node 环境驱动，需 Rust ws_chat_server）
+- `echostream.ts` — SDK 入口源码（`pnpm build` 构建到 `dist/echostream.js`）
+- `wasm/` — Rust 编译的协议核心（编解码 + 状态机；构建时复制到 `dist/wasm/`）
+- `index.html` / `e2e.html` — 浏览器 demo 与 E2E 页面（引用 `./dist/echostream.js`）
+- `echostream.test.ts` / `client_core.test.ts` — 编解码与状态机交叉验证
+- `e2e.sdk.test.ts` — SDK 端到端（Node 环境驱动，需 Rust ws_chat_server）
 
 ## 重新构建 WASM 模块
 

@@ -23,7 +23,7 @@ const TOKEN: &str = "my-secret-token";
 
 /// RPC：add(a, b) -> a + b
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 

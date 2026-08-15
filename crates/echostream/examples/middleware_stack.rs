@@ -24,20 +24,20 @@ const ADDR: &str = "127.0.0.1:5200";
 
 /// RPC：add(a, b) -> a + b
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
 /// RPC：慢处理（触发超时中间件）
 #[rpc("slow")]
-async fn slow(_session: &Session, ms: u64) -> Result<String> {
+async fn slow(ms: u64) -> Result<String> {
     tokio::time::sleep(Duration::from_millis(ms)).await;
     Ok("done".to_string())
 }
 
 /// RPC：业务错误（触发错误归一化中间件）
 #[rpc("boom")]
-async fn boom(_session: &Session, _: ()) -> Result<()> {
+async fn boom(_: ()) -> Result<()> {
     Err(Error::Rpc(7, "业务爆炸".to_string()))
 }
 

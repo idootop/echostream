@@ -23,9 +23,9 @@ EchoStream 通过 QUIC 在单连接上同时承载控制信令与实时数据流
 ```rust
 use echostream::prelude::*;
 
-// 用声明式宏定义处理器，像写本地函数一样
+// 用声明式宏定义处理器，像写本地函数一样（Session 参数可省略，需要时再写）
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
@@ -58,19 +58,24 @@ async fn client_demo() -> Result<()> {
 ## 多端开发体验一致
 
 ```js
-// Node.js（ESM）：import { connect, ServerBuilder } from "echostream-node";
+// Node.js（ESM）
+import { connect } from "echostream-node";
+
 const client = await connect("127.0.0.1:5000");
 const sum = await client.request("add", 10, 20);   // 30，自动编解码
 ```
 
 ```python
-# Python：import echostream
+import echostream
+
 client = echostream.connect("127.0.0.1:5000")
 total = client.request("add", 10, 20)              # 30，自动编解码
 ```
 
 ```js
-// 浏览器：import { EchoStream } from "./dist/echostream.js";
+// 浏览器 SDK（构建产物：bindings/web 下 pnpm build）
+import { EchoStream } from "./dist/echostream.js";
+
 const client = new EchoStream("ws://192.168.1.100:8081");
 await client.connect();
 const sum = await client.request("add", 10, 20);   // 30，自动编解码

@@ -12,7 +12,7 @@ use wtransport::{ClientConfig, Endpoint};
 
 /// RPC：加法
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
@@ -28,7 +28,7 @@ async fn on_hello(session: &Session, data: String) -> Result<()> {
 
 /// Stream：接收客户端流
 #[stream("chat")]
-async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_chat(mut stream: StreamReceiver) -> Result<()> {
     let mut seq = 0u64;
     while let Some(text) = stream.recv::<String>().await? {
         println!("[server] 流帧 #{seq}: {text}");

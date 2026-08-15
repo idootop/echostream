@@ -9,7 +9,7 @@ use echostream_transport::ws::WsServerBuilder;
 
 /// RPC：加法
 #[rpc("add")]
-async fn add(_session: &Session, (a, b): (i64, i64)) -> Result<i64> {
+async fn add((a, b): (i64, i64)) -> Result<i64> {
     Ok(a + b)
 }
 
@@ -22,7 +22,7 @@ async fn on_hello(session: &Session, data: String) -> Result<()> {
 
 /// 流：聊天流
 #[stream("chat")]
-async fn on_chat(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_chat(mut stream: StreamReceiver) -> Result<()> {
     let mut count = 0u64;
     while let Some(text) = stream.recv::<String>().await? {
         count += 1;

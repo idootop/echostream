@@ -11,19 +11,19 @@ use echostream::prelude::*;
 
 /// RPC：回显（最小负载往返）
 #[rpc("echo")]
-async fn echo(_session: &Session, data: Vec<u8>) -> Result<Vec<u8>> {
+async fn echo(data: Vec<u8>) -> Result<Vec<u8>> {
     Ok(data)
 }
 
 /// RPC：64 字节往返
 #[rpc("echo64")]
-async fn echo64(_session: &Session, data: Vec<u8>) -> Result<Vec<u8>> {
+async fn echo64(data: Vec<u8>) -> Result<Vec<u8>> {
     Ok(data)
 }
 
 /// 流：计数
 #[stream("bench_stream")]
-async fn on_stream(_session: &Session, mut stream: StreamReceiver) -> Result<()> {
+async fn on_stream(mut stream: StreamReceiver) -> Result<()> {
     let mut count: u64 = 0;
     let mut bytes: u64 = 0;
     while let Some(frame) = stream.recv_frame().await? {
@@ -38,7 +38,7 @@ async fn on_stream(_session: &Session, mut stream: StreamReceiver) -> Result<()>
 static EVENT_COUNT: AtomicU64 = AtomicU64::new(0);
 
 #[event("bench_event")]
-async fn on_event(_session: &Session, _data: Vec<u8>) -> Result<()> {
+async fn on_event(_data: Vec<u8>) -> Result<()> {
     EVENT_COUNT.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

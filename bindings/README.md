@@ -36,8 +36,9 @@
 ```rust
 use echostream::prelude::*;
 
+// Session 参数可省略（需要会话时再写）
 #[rpc("add")]
-async fn add(_s: &Session, (a, b): (i64, i64)) -> Result<i64> { Ok(a + b) }
+async fn add((a, b): (i64, i64)) -> Result<i64> { Ok(a + b) }
 
 let sum: i64 = client.request("add", &(10, 20)).await?; // 30
 ```
