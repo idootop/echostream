@@ -17,7 +17,7 @@ use echostream::prelude::*;
 use pyo3::conversion::IntoPyObjectExt;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyList};
+use pyo3::types::{PyBytes, PyDict, PyList};
 
 // ======================== 运行时 ========================
 
@@ -264,6 +264,44 @@ impl PyStreamReceiver {
             Some(f) => Ok(Some(PyBytes::new(py, &f.data).into())),
             None => Ok(None),
         }
+    }
+
+    /// 流元数据（来自 StreamOpen 首帧：音视频参数 / 文件信息等）
+    fn metadata(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let guard = py.detach(|| {
+            let handle = runtime().handle().clone();
+            tokio::task::block_in_place(|| handle.block_on(self.inner.lock()))
+        });
+        let dict = PyDict::new(py);
+        if let Some(recv) = guard.as_ref() {
+            for m in recv.metadata() {
+                dict.set_item(
+                    m.key.as_str(),
+                    String::from_utf8_lossy(&m.value).to_string(),
+                )?;
+            }
+        }
+        Ok(dict.unbind())
+    }
+
+    /// 结束码（0 正常 / 非 0 异常；流结束后有效，未结束返回 0）
+    fn end_code(&self, py: Python<'_>) -> PyResult<u32> {
+        let guard = py.detach(|| {
+            let handle = runtime().handle().clone();
+            tokio::task::block_in_place(|| handle.block_on(self.inner.lock()))
+        });
+        Ok(guard.as_ref().map(|r| r.end_code() as u32).unwrap_or(0))
+    }
+
+    /// 结束原因（流结束后有效；未结束返回 None）
+    fn end_message(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let guard = py.detach(|| {
+            let handle = runtime().handle().clone();
+            tokio::task::block_in_place(|| handle.block_on(self.inner.lock()))
+        });
+        Ok(guard
+            .as_ref()
+            .and_then(|r| r.end_message().map(|s| s.to_string())))
     }
 }
 

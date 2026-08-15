@@ -67,9 +67,7 @@ async fn main() -> Result<()> {
     let stream = Message::Stream(StreamMsg {
         id: 3,
         seq: 0,
-        flags: 0,
         sender_ts: Timestamp(123),
-        rtp_ts: 0,
         data: echostream::codec::encode(&"hi".to_string())?,
     });
     println!(

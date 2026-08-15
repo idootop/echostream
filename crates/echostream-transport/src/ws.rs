@@ -116,29 +116,35 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
                 Message::Event(event) => {
                     router.dispatch_event(&session, event).await;
                 }
-                Message::Stream(frame) => {
+                Message::StreamOpen(open) => {
                     // 已注册的流：路由到对应接收器；否则尝试新建流会话
-                    let existing = streams.lock().unwrap().get(&frame.id).cloned();
+                    let existing = streams.lock().unwrap().get(&open.id).cloned();
                     match existing {
                         Some(tx) => {
-                            let _ = tx.send(Message::Stream(frame));
+                            let _ = tx.send(Message::StreamOpen(open));
                         }
-                        None if router.has_stream(&frame.name) => {
+                        None if router.has_stream(&open.name) => {
                             let (tx, rx) = mpsc::unbounded_channel::<Message>();
-                            streams.lock().unwrap().insert(frame.id, tx);
+                            streams.lock().unwrap().insert(open.id, tx);
                             let s = session.clone();
                             let r = router.clone();
                             let streams2 = streams.clone();
-                            let frame_id = frame.id;
+                            let open_id = open.id;
                             tokio::spawn(async move {
                                 let io = WsStreamIo::new(rx);
-                                r.dispatch_stream(&s, Box::new(io), frame).await;
-                                streams2.lock().unwrap().remove(&frame_id);
+                                r.dispatch_stream(&s, Box::new(io), open).await;
+                                streams2.lock().unwrap().remove(&open_id);
                             });
                         }
                         None => {
-                            tracing::debug!("未找到流处理器: {}", frame.name);
+                            tracing::debug!("未找到流处理器: {}", open.name);
                         }
+                    }
+                }
+                Message::Stream(frame) => {
+                    // 数据帧：路由到已注册流的接收器
+                    if let Some(tx) = streams.lock().unwrap().get(&frame.id).cloned() {
+                        let _ = tx.send(Message::Stream(frame));
                     }
                 }
                 Message::StreamEnd(end) => {
@@ -335,6 +341,7 @@ impl FrameIo for WsStreamIo {
     async fn read_message(&mut self) -> Result<Option<Message>> {
         match self.rx.recv().await {
             Some(Message::Stream(frame)) => Ok(Some(Message::Stream(frame))),
+            Some(Message::StreamOpen(open)) => Ok(Some(Message::StreamOpen(open))),
             Some(Message::StreamEnd(_)) => Ok(None), // 流结束
             Some(_) => Ok(None),
             None => Ok(None),

@@ -69,9 +69,15 @@ assert.equal(
   hex(encode_message({ type: "event", id: 2n, name: "hello", data: encode_payload("world") })),
   "02 02 05 68 65 6c 6c 6f 06 05 77 6f 72 6c 64"
 );
+// 流开始帧：type=3(streamOpen) id=3 name="chat" metadata={}（无字段）
 assert.equal(
-  hex(encode_message({ type: "stream", id: 3n, name: "chat", seq: 0n, senderTs: 123n, data: encode_payload("hi") })),
-  "03 03 04 63 68 61 74 00 7b 03 02 68 69"
+  hex(encode_message({ type: "streamOpen", id: 3n, name: "chat", metadata: {} })),
+  "03 03 04 63 68 61 74 00"
+);
+// 数据帧（无 name / flags / rtpTs）：type=4(stream) id=3 seq=0 senderTs=123
+assert.equal(
+  hex(encode_message({ type: "stream", id: 3n, seq: 0n, senderTs: 123n, data: encode_payload("hi") })),
+  "04 03 00 7b 03 02 68 69"
 );
 
 // 解码回环

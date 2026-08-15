@@ -407,24 +407,23 @@ impl Router {
         let this = self.clone();
         let session2 = session.clone();
         let stream_name = open.name.clone();
-        // 读取首个数据帧（流可能无数据直接结束）
-        let first = match recv.read_message().await {
-            Ok(Some(Message::Stream(frame))) if frame.id == open.id => frame,
-            Ok(Some(Message::StreamEnd(end))) if end.id == open.id => {
-                tracing::debug!("流 {stream_name} 无数据帧直接结束");
-                return;
-            }
-            Ok(Some(_)) => {
-                tracing::debug!("流 {stream_name} 首数据帧异常");
-                return;
-            }
-            Ok(None) => {
-                tracing::debug!("流 {stream_name} 提前关闭");
-                return;
-            }
-            Err(e) => {
-                tracing::debug!("流 {stream_name} 读取失败: {e}");
-                return;
+        // 读取首个数据帧（跳过非数据帧；流可能无数据直接结束）
+        let first = loop {
+            match recv.read_message().await {
+                Ok(Some(Message::Stream(frame))) if frame.id == open.id => break frame,
+                Ok(Some(Message::StreamEnd(end))) if end.id == open.id => {
+                    tracing::debug!("流 {stream_name} 无数据帧直接结束");
+                    return;
+                }
+                Ok(Some(_)) => continue, // 跳过（重复 open / 其他流帧）
+                Ok(None) => {
+                    tracing::debug!("流 {stream_name} 提前关闭");
+                    return;
+                }
+                Err(e) => {
+                    tracing::debug!("流 {stream_name} 读取失败: {e}");
+                    return;
+                }
             }
         };
         // 接收器由终端独占消费（中间件至多调用一次 next；Arc 共享避免借用逃逸）

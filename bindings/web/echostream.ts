@@ -61,16 +61,52 @@ export interface EchoStreamOptions {
   [key: string]: unknown;
 }
 
-/** 入站流接收器（帧自动解码；流结束返回 null） */
-export interface InboundStream<T = unknown> {
-  recv(): Promise<T | null>;
+/** 入站流帧对象（来自 WASM 状态机；核心只含传输字段，上层语义经 metadata 协商） */
+export interface StreamFrame {
+  id: bigint;
+  seq: bigint;
+  senderTs: bigint;
+  data: Uint8Array;
 }
 
-/** 出站流（帧自动编码） */
+/** 流结束信息 */
+export interface StreamEndInfo {
+  code: number;
+  message: string | null;
+}
+
+/** 流元数据（键值；字符串 / 数字 / 字节） */
+export type StreamMetadata = Record<string, string | number | Uint8Array>;
+
+/** 入站流接收器（帧自动解码；流结束返回 null） */
+export interface InboundStream<T = unknown> {
+  /** 读取下一帧（自动解码）；流结束返回 null */
+  recv(): Promise<T | null>;
+  /** 流 id（StreamOpen 首帧到达后有效） */
+  id(): bigint | null;
+  /** 流元数据（StreamOpen 协商：音视频参数 / 文件信息等） */
+  metadata(): StreamMetadata;
+  /** 结束码（0 正常 / 非 0 异常；流结束后有效，未结束返回 null） */
+  endCode(): number | null;
+  /** 结束原因（流结束后有效） */
+  endMessage(): string | null;
+}
+
+/** 创建出站流选项（元数据协商：音视频参数 / 文件信息等） */
+export interface CreateStreamOptions {
+  metadata?: StreamMetadata;
+}
+
+/** 出站流（帧自动编码；核心只做传输，上层语义经 metadata 协商后在载荷内实现） */
 export interface OutboundStream {
   name: string;
+  metadata: StreamMetadata;
+  /** 发送一帧（自动编码） */
   send<T = unknown>(payload: T, options?: RequestOptions): Promise<void>;
+  /** 关闭流（正常结束） */
   finish(): Promise<void>;
+  /** 关闭流（指定结束码与原因；0 正常，非 0 异常/取消） */
+  finishWith(code: number, message?: string): Promise<void>;
 }
 
 /** 帧读取器（WebTransport 网络层；4 字节长度前缀 + 载荷） */
@@ -318,24 +354,40 @@ export class EchoStream {
 
   // ======================== Stream ========================
 
-  /** 创建出站流（帧自动编码） */
-  async createStream(name: string): Promise<OutboundStream> {
+  /**
+   * 创建出站流（帧自动编码；可选元数据协商：音视频参数 / 文件信息等）
+   * @param options.metadata 如 { codec: "h264", width: 1920, samplerate: 48000, filename: "a.mp4" }
+   */
+  async createStream(name: string, options: CreateStreamOptions = {}): Promise<OutboundStream> {
     const id = this.core!.open_stream(name);
+    // StreamOpen 首帧：流协商
+    await this._send(this.core!.build_stream_open(id, name, options.metadata ?? {}));
     return {
       name,
-      send: async <T = unknown>(payload: T, options: RequestOptions = {}): Promise<void> => {
-        await this._send(this.core!.build_stream_frame(id, name, encodePayload(payload, options), BigInt(Date.now())));
+      metadata: options.metadata ?? {},
+      send: async <T = unknown>(payload: T, opts: RequestOptions = {}): Promise<void> => {
+        await this._send(
+          this.core!.build_stream_frame(id, encodePayload(payload, opts), BigInt(Date.now())),
+        );
       },
       finish: async (): Promise<void> => {
-        if (this.isWs) {
-          await this._send(this.core!.build_stream_end(id));
-        } else {
-          const stream = await this.transport!.createUnidirectionalStream();
-          const writer = stream.getWriter();
-          await writer.close();
-        }
+        await this._finishStream(id);
+      },
+      finishWith: async (code: number, message?: string): Promise<void> => {
+        await this._send(this.core!.build_stream_end(id, code, message ?? null));
       },
     };
+  }
+
+  /** 关闭出站流（ws 发送 StreamEnd；wt 关闭单向流） */
+  private async _finishStream(id: bigint): Promise<void> {
+    if (this.isWs) {
+      await this._send(this.core!.build_stream_end(id, 0, null));
+    } else {
+      const stream = await this.transport!.createUnidirectionalStream();
+      const writer = stream.getWriter();
+      await writer.close();
+    }
   }
 
   /**
@@ -350,13 +402,18 @@ export class EchoStream {
     if (this._streamHandlers.has(name)) {
       throw new Error("同名流处理器已注册: " + name);
     }
-    const receiver = createStreamReceiver<T>();
+    const core = this.core!;
+    const receiver = createStreamReceiver<T>({
+      metadata: (sid) => core.stream_metadata(sid),
+      end: (sid) => core.stream_end(sid),
+    });
     this._streamHandlers.set(name, receiver);
-    const id = this.core!.on_stream(name, (frame: Uint8Array | null) => {
+    const id = core.on_stream(name, (frame: StreamFrame | null) => {
       if (frame === null) {
         receiver.push(null);
       } else {
-        receiver.push(decodePayload(frame) as T);
+        receiver.setId(frame.id); // 记录流 id（元数据 / 结束信息查询）
+        receiver.push(decodePayload(frame.data) as T);
       }
     });
     const ret = handler(receiver);
@@ -366,7 +423,7 @@ export class EchoStream {
     return () => {
       this._streamHandlers.delete(name);
       receiver.push(null); // 唤醒等待中的 recv()
-      this.core!.off_stream(id);
+      core.off_stream(id);
     };
   }
 
@@ -510,12 +567,20 @@ function spreadArgs(bytes: Uint8Array): unknown[] {
 /** 拉取式流接收器：帧队列 + 等待者（null 标记流结束） */
 interface StreamReceiverImpl<T> extends InboundStream<T> {
   push(value: T | null): void;
+  setId(id: bigint): void;
 }
 
-function createStreamReceiver<T>(): StreamReceiverImpl<T> {
+/** 流信息查询（注入 WASM 状态机查询接口） */
+interface StreamQuery {
+  metadata(id: bigint): StreamMetadata | undefined;
+  end(id: bigint): StreamEndInfo | undefined;
+}
+
+function createStreamReceiver<T>(query?: StreamQuery): StreamReceiverImpl<T> {
   let queue: (T | null)[] = [];   // 帧队列（null 标记流结束）
   let waiters: ((v: T | null) => void)[] = []; // 等待中的 recv() 调用
   let ended = false;
+  let streamId: bigint | null = null;
   return {
     async recv(): Promise<T | null> {
       if (queue.length > 0) return queue.shift() as T;
@@ -534,6 +599,26 @@ function createStreamReceiver<T>(): StreamReceiverImpl<T> {
       } else {
         queue.push(value);
       }
+    },
+    setId(id: bigint): void {
+      streamId = id;
+    },
+    id(): bigint | null {
+      return streamId;
+    },
+    metadata(): StreamMetadata {
+      if (streamId === null) return {};
+      return query?.metadata(streamId) ?? {};
+    },
+    endCode(): number | null {
+      if (streamId === null) return null;
+      const end = query?.end(streamId);
+      return end === undefined ? null : end.code;
+    },
+    endMessage(): string | null {
+      if (streamId === null) return null;
+      const end = query?.end(streamId);
+      return end === undefined ? null : end.message;
     },
   };
 }

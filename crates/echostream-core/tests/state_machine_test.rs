@@ -185,8 +185,8 @@ fn async_rpc_handler_defers_response() {
 fn stream_seq_increments_per_stream() {
     let mut core = ClientCore::new();
     let id = core.open_stream("chat");
-    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0, 0, 0);
-    let f2 = core.build_stream_frame(id, Bytes::from(vec![2]), 0, 0, 0);
+    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0);
+    let f2 = core.build_stream_frame(id, Bytes::from(vec![2]), 0);
     match (f1, f2) {
         (Message::Stream(a), Message::Stream(b)) => {
             assert_eq!(a.seq, 0);
@@ -196,7 +196,7 @@ fn stream_seq_increments_per_stream() {
     }
     // 另一条流序号独立
     let id2 = core.open_stream("chat");
-    let f3 = core.build_stream_frame(id2, Bytes::from(vec![3]), 0, 0, 0);
+    let f3 = core.build_stream_frame(id2, Bytes::from(vec![3]), 0);
     match f3 {
         Message::Stream(s) => assert_eq!(s.seq, 0),
         _ => panic!("期望 Stream 帧"),
@@ -236,9 +236,9 @@ fn stream_open_carries_metadata_and_routes_by_id() {
     core.handle_inbound(open);
 
     // 数据帧（无 name）按 id 路由
-    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0, 0, 44100);
+    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0);
     match &f1 {
-        Message::Stream(s) => assert_eq!(s.rtp_ts, 44100),
+        Message::Stream(s) => assert_eq!(s.seq, 0),
         other => panic!("期望 Stream，得到 {other:?}"),
     }
     core.handle_inbound(f1);
@@ -341,9 +341,7 @@ fn stream_end_and_timestamp_helpers() {
     let _ = StreamMsg {
         id: 0,
         seq: 0,
-        flags: 0,
         sender_ts: ts,
-        rtp_ts: 0,
         data: Bytes::new(),
     };
 }

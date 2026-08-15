@@ -53,8 +53,8 @@ console.log("✅ 服务端主动调用（状态机自动回响应）");
 
 // ===== 流序号管理 =====
 const sid = core.open_stream("chat");
-const f0 = decode_message(core.build_stream_frame(sid, "chat", encode_payload("a"), 1n).subarray(4));
-const f1 = decode_message(core.build_stream_frame(sid, "chat", encode_payload("b"), 2n).subarray(4));
+const f0 = decode_message(core.build_stream_frame(sid, encode_payload("a"), 1n).subarray(4));
+const f1 = decode_message(core.build_stream_frame(sid, encode_payload("b"), 2n).subarray(4));
 assert.equal(f0.seq, 0);
 assert.equal(f1.seq, 1);
 console.log("✅ 流序号自动递增（状态机管理）");

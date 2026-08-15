@@ -7,8 +7,8 @@
 //!    （codec/samplerate/bitrate/width/height/fps）、时间同步时钟
 //!    （clock-rate，rtp_ts 的单位）、文件信息（filename/size/mime）、自定义扩展
 //! 2. **StreamMsg（数据帧）**：按 id 路由（名称仅在 open 携带，省每帧字符串开销），
-//!    带序列号（丢包检测）、墙钟时间戳（延迟测量）、采样时间戳 rtp_ts（播放同步）、
-//!    帧标志 flags（关键帧标记，供快进/丢帧）
+//!    带序列号（丢包检测）与墙钟时间戳（延迟测量）；核心只承载传输语义，
+//!    采样时钟 / 关键帧等上层语义由 open.metadata 协商、上层插件在载荷内实现
 //! 3. **StreamEnd（流结束）**：结束码（0 正常 / 非 0 异常取消）+ 原因 + 结束元数据
 //!    （trailers 风格：统计、校验和等）
 //!
@@ -18,9 +18,7 @@
 
 use bytes::Bytes;
 use echostream_proto::endpoint::FrameIo;
-use echostream_proto::{
-    Message, Result, StreamEndMsg, StreamMetaEntry, StreamMsg, Timestamp, stream_flags,
-};
+use echostream_proto::{Message, Result, StreamEndMsg, StreamMetaEntry, StreamMsg, Timestamp};
 use futures::{Stream, stream::unfold};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -60,25 +58,8 @@ impl StreamSender {
         self.send_raw(codec::encode(&data)?).await
     }
 
-    /// 发送关键帧（自动序列化；标记 KEY_FRAME，视频 I 帧 / 音频首包 / 文件头）
-    pub async fn send_key<T: Serialize + Send>(&mut self, data: T) -> Result<()> {
-        self.send_frame(codec::encode(&data)?, stream_flags::KEY_FRAME, 0)
-            .await
-    }
-
-    /// 发送带采样时间戳的帧（自动序列化；rtp_ts 单位由 open.metadata 的 clock-rate 约定，
-    /// 音视频播放同步场景使用）
-    pub async fn send_rtp<T: Serialize + Send>(&mut self, data: T, rtp_ts: u64) -> Result<()> {
-        self.send_frame(codec::encode(&data)?, 0, rtp_ts).await
-    }
-
     /// 发送帧（载荷为已编码字节，跳过序列化）
     pub async fn send_raw(&mut self, data: Bytes) -> Result<()> {
-        self.send_frame(data, 0, 0).await
-    }
-
-    /// 发送帧（完整控制：载荷字节 + 标志 + 采样时间戳）
-    pub async fn send_frame(&mut self, data: Bytes, flags: u8, rtp_ts: u64) -> Result<()> {
         // 首帧前自动补发 StreamOpen（零数据流不发送）
         if !self.opened {
             self.io
@@ -93,9 +74,7 @@ impl StreamSender {
         let frame = StreamMsg {
             id: self.id,
             seq: self.seq,
-            flags,
             sender_ts: Timestamp::now(),
-            rtp_ts,
             data,
         };
         self.seq += 1;
@@ -337,9 +316,7 @@ mod tests {
         Message::Stream(StreamMsg {
             id,
             seq,
-            flags: 0,
             sender_ts: Timestamp(0),
-            rtp_ts: 0,
             data: Bytes::from(postcard::to_allocvec(&data.to_string()).unwrap()),
         })
     }
@@ -359,9 +336,7 @@ mod tests {
             StreamMsg {
                 id: 1,
                 seq: 0,
-                flags: 0,
                 sender_ts: Timestamp(0),
-                rtp_ts: 0,
                 data: Bytes::from(postcard::to_allocvec(&first_data.to_string()).unwrap()),
             },
             vec![],

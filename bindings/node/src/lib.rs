@@ -268,6 +268,38 @@ impl JsStreamReceiver {
             Ok(None)
         }
     }
+
+    /// 流元数据（来自 StreamOpen 首帧：音视频参数 / 文件信息等；键值字符串）
+    #[napi]
+    pub async fn metadata(&self) -> napi::Result<serde_json::Value> {
+        let guard = self.inner.lock().await;
+        let mut map = serde_json::Map::new();
+        if let Some(recv) = guard.as_ref() {
+            for m in recv.metadata() {
+                map.insert(
+                    m.key.clone(),
+                    serde_json::Value::String(String::from_utf8_lossy(&m.value).to_string()),
+                );
+            }
+        }
+        Ok(serde_json::Value::Object(map))
+    }
+
+    /// 结束码（0 正常 / 非 0 异常；流结束后有效，未结束返回 0）
+    #[napi]
+    pub async fn end_code(&self) -> napi::Result<u32> {
+        let guard = self.inner.lock().await;
+        Ok(guard.as_ref().map(|r| r.end_code() as u32).unwrap_or(0))
+    }
+
+    /// 结束原因（流结束后有效；未结束返回 null）
+    #[napi]
+    pub async fn end_message(&self) -> napi::Result<Option<String>> {
+        let guard = self.inner.lock().await;
+        Ok(guard
+            .as_ref()
+            .and_then(|r| r.end_message().map(|s| s.to_string())))
+    }
 }
 
 /// 服务端（Node 侧句柄）

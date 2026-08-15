@@ -13,7 +13,7 @@
 use bytes::Bytes;
 use echostream_proto::{
     Dynamic, EventMsg, Message, RequestMsg, ResponseMsg, Schema, StatusCode, StreamEndMsg,
-    StreamMsg, Timestamp,
+    StreamMetaEntry, StreamMsg, StreamOpenMsg, Timestamp,
 };
 use js_sys::{Array, BigInt, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -286,14 +286,23 @@ fn js_to_message(v: &JsValue) -> Result<Message, JsValue> {
             name: get_str(&obj, "name")?,
             data: get_bytes(&obj, "data")?,
         })),
-        "stream" => Ok(Message::Stream(StreamMsg {
+        "streamOpen" => Ok(Message::StreamOpen(StreamOpenMsg {
             id,
             name: get_str(&obj, "name")?,
+            metadata: get_metadata(&obj)?,
+        })),
+        "stream" => Ok(Message::Stream(StreamMsg {
+            id,
             seq: get_u64(&obj, "seq")?,
             sender_ts: Timestamp(get_u64(&obj, "senderTs")?),
             data: get_bytes(&obj, "data")?,
         })),
-        "streamEnd" => Ok(Message::StreamEnd(StreamEndMsg { id })),
+        "streamEnd" => Ok(Message::StreamEnd(StreamEndMsg {
+            id,
+            code: get_u64(&obj, "code")? as u16,
+            message: get_opt_str(&obj, "message")?,
+            metadata: get_metadata(&obj)?,
+        })),
         other => Err(js_err(&format!("未知消息类型: {other}"))),
     }
 }
@@ -328,10 +337,15 @@ fn message_to_js(msg: &Message) -> Result<JsValue, JsValue> {
             Reflect::set(&obj, &"name".into(), &m.name.clone().into()).unwrap();
             Reflect::set(&obj, &"data".into(), &Uint8Array::from(&m.data[..]).into()).unwrap();
         }
+        Message::StreamOpen(m) => {
+            Reflect::set(&obj, &"type".into(), &"streamOpen".into()).unwrap();
+            Reflect::set(&obj, &"id".into(), &JsValue::from_f64(m.id as f64)).unwrap();
+            Reflect::set(&obj, &"name".into(), &m.name.clone().into()).unwrap();
+            Reflect::set(&obj, &"metadata".into(), &metadata_to_js(&m.metadata)).unwrap();
+        }
         Message::Stream(m) => {
             Reflect::set(&obj, &"type".into(), &"stream".into()).unwrap();
             Reflect::set(&obj, &"id".into(), &JsValue::from_f64(m.id as f64)).unwrap();
-            Reflect::set(&obj, &"name".into(), &m.name.clone().into()).unwrap();
             Reflect::set(&obj, &"seq".into(), &JsValue::from_f64(m.seq as f64)).unwrap();
             Reflect::set(
                 &obj,
@@ -344,9 +358,76 @@ fn message_to_js(msg: &Message) -> Result<JsValue, JsValue> {
         Message::StreamEnd(m) => {
             Reflect::set(&obj, &"type".into(), &"streamEnd".into()).unwrap();
             Reflect::set(&obj, &"id".into(), &JsValue::from_f64(m.id as f64)).unwrap();
+            Reflect::set(&obj, &"code".into(), &JsValue::from_f64(m.code as f64)).unwrap();
+            Reflect::set(
+                &obj,
+                &"message".into(),
+                &m.message
+                    .clone()
+                    .map(JsValue::from)
+                    .unwrap_or(JsValue::null()),
+            )
+            .unwrap();
+            Reflect::set(&obj, &"metadata".into(), &metadata_to_js(&m.metadata)).unwrap();
         }
     }
     Ok(obj.into())
+}
+
+/// JS 元数据对象 <-> Vec<StreamMetaEntry>
+///
+/// JS 表示：Record<string, string | Uint8Array>（值自动按 UTF-8 字符串/字节处理）
+fn get_metadata(obj: &js_sys::Object) -> Result<Vec<StreamMetaEntry>, JsValue> {
+    let meta = Reflect::get(obj, &"metadata".into()).unwrap_or(JsValue::UNDEFINED);
+    if meta.is_undefined() || meta.is_null() {
+        return Ok(Vec::new());
+    }
+    let obj = meta
+        .dyn_ref::<js_sys::Object>()
+        .ok_or_else(|| js_err("metadata 必须是对象"))?;
+    let keys =
+        Reflect::own_keys(obj).map_err(|e| js_err(&format!("metadata 键获取失败: {e:?}")))?;
+    let mut out = Vec::with_capacity(keys.length() as usize);
+    for i in 0..keys.length() {
+        let key = keys.get(i);
+        let key_str = key
+            .as_string()
+            .ok_or_else(|| js_err("metadata 键非字符串"))?;
+        let val =
+            Reflect::get(obj, &key).map_err(|e| js_err(&format!("metadata 值读取失败: {e:?}")))?;
+        let value = if let Some(s) = val.as_string() {
+            Bytes::from(s.into_bytes())
+        } else if let Some(arr) = val.dyn_ref::<Uint8Array>() {
+            Bytes::from(arr.to_vec())
+        } else if val.as_f64().is_some() {
+            Bytes::from(val.as_f64().unwrap_or(0.0).to_string().into_bytes())
+        } else if val.is_bigint() {
+            let s = js_sys::BigInt::from(val)
+                .to_string(10)
+                .map(|s| s.as_string().unwrap_or_default())
+                .unwrap_or_default();
+            Bytes::from(s.into_bytes())
+        } else {
+            return Err(js_err("metadata 值必须是字符串 / 数字 / Uint8Array"));
+        };
+        out.push(StreamMetaEntry {
+            key: key_str,
+            value,
+        });
+    }
+    Ok(out)
+}
+
+fn metadata_to_js(meta: &[StreamMetaEntry]) -> JsValue {
+    let obj = js_sys::Object::new();
+    for m in meta {
+        let val = match String::from_utf8(m.value.to_vec()) {
+            Ok(s) => JsValue::from(s),
+            Err(_) => Uint8Array::from(&m.value[..]).into(),
+        };
+        Reflect::set(&obj, &m.key.clone().into(), &val).unwrap();
+    }
+    obj.into()
 }
 
 // ======================== 辅助 ========================
@@ -479,17 +560,33 @@ impl ClientCoreHandle {
         self.core.open_stream(name)
     }
 
-    /// 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
-    pub fn build_stream_frame(
+    /// 构造流开始帧（流协商：名称 + 元数据；流首帧必须为此帧）
+    /// metadata：Record<string, string | number | Uint8Array>
+    pub fn build_stream_open(
         &mut self,
         id: u64,
         name: &str,
+        metadata: &JsValue,
+    ) -> Result<Vec<u8>, JsValue> {
+        let meta = get_metadata(
+            metadata
+                .dyn_ref::<js_sys::Object>()
+                .ok_or_else(|| js_err("metadata 必须是对象"))?,
+        )?;
+        let msg = self.core.build_stream_open(id, name, meta);
+        encode_frame_bytes(&msg)
+    }
+
+    /// 构造流数据帧（自动递增序号；senderTs 为毫秒墙钟）
+    pub fn build_stream_frame(
+        &mut self,
+        id: u64,
         payload: &[u8],
         sender_ts: u64,
     ) -> Result<Vec<u8>, JsValue> {
-        let msg =
-            self.core
-                .build_stream_frame(id, name, Bytes::copy_from_slice(payload), sender_ts);
+        let msg = self
+            .core
+            .build_stream_frame(id, Bytes::copy_from_slice(payload), sender_ts);
         encode_frame_bytes(&msg)
     }
 
@@ -499,10 +596,44 @@ impl ClientCoreHandle {
             .build_datagram_event(name, Bytes::copy_from_slice(payload))
     }
 
-    /// 构造流结束标记（WebSocket 传输的流关闭）
-    pub fn build_stream_end(&mut self, id: u64) -> Result<Vec<u8>, JsValue> {
-        let msg = self.core.build_stream_end(id);
+    /// 构造流结束帧（WebSocket 传输的流关闭；code=0 正常，非 0 异常/取消）
+    pub fn build_stream_end(
+        &mut self,
+        id: u64,
+        code: u32,
+        message: Option<String>,
+    ) -> Result<Vec<u8>, JsValue> {
+        let msg = self.core.build_stream_end(id, code as u16, message);
         encode_frame_bytes(&msg)
+    }
+
+    /// 查询流的元数据（StreamOpen 记录；返回 Record<string, string | Uint8Array>）
+    pub fn stream_metadata(&self, id: u64) -> Option<JsValue> {
+        self.core.stream_metadata(id).map(metadata_to_js)
+    }
+
+    /// 查询流的结束信息（StreamEnd 记录；返回 { code, message, metadata } 或 null）
+    pub fn stream_end(&self, id: u64) -> Option<JsValue> {
+        self.core.stream_end(id).map(|e| {
+            let obj = js_sys::Object::new();
+            Reflect::set(&obj, &"code".into(), &JsValue::from_f64(e.code as f64)).unwrap();
+            Reflect::set(
+                &obj,
+                &"message".into(),
+                &e.message
+                    .clone()
+                    .map(JsValue::from)
+                    .unwrap_or(JsValue::null()),
+            )
+            .unwrap();
+            Reflect::set(&obj, &"metadata".into(), &metadata_to_js(&e.metadata)).unwrap();
+            obj.into()
+        })
+    }
+
+    /// 清理已结束流的内部状态（避免元数据累积）
+    pub fn remove_stream_state(&mut self, id: u64) {
+        self.core.remove_stream_state(id);
     }
 
     /// 构造响应帧（服务端主动调用的异步回复）
@@ -519,15 +650,25 @@ impl ClientCoreHandle {
         encode_frame_bytes(&msg)
     }
 
-    /// 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
-    /// 返回监听 id（off_stream 取消注册）
+    /// 注册入站流处理器（处理对端推送的流；回调：frame 对象或 null），
+    /// 帧对象含 { id, seq, senderTs, data: Uint8Array }，返回监听 id（off_stream 取消注册）
     pub fn on_stream(&mut self, name: &str, callback: js_sys::Function) -> u32 {
         let id = self
             .core
             .on_stream(name, move |frame: Option<StreamMsg>| match frame {
                 Some(f) => {
-                    let arr = Uint8Array::from(&f.data[..]);
-                    let _ = callback.call1(&JsValue::NULL, &arr.into());
+                    let obj = js_sys::Object::new();
+                    Reflect::set(&obj, &"id".into(), &JsValue::from_f64(f.id as f64)).unwrap();
+                    Reflect::set(&obj, &"seq".into(), &JsValue::from_f64(f.seq as f64)).unwrap();
+                    Reflect::set(
+                        &obj,
+                        &"senderTs".into(),
+                        &JsValue::from_f64(f.sender_ts.0 as f64),
+                    )
+                    .unwrap();
+                    Reflect::set(&obj, &"data".into(), &Uint8Array::from(&f.data[..]).into())
+                        .unwrap();
+                    let _ = callback.call1(&JsValue::NULL, &obj.into());
                 }
                 None => {
                     let _ = callback.call1(&JsValue::NULL, &JsValue::NULL);

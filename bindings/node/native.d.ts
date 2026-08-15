@@ -30,6 +30,12 @@ export interface NativeStream {
 /** 底层入站流接收器（recv 返回 null 表示流结束） */
 export interface NativeStreamReceiver {
   recv(): Promise<Uint8Array | null>;
+  /** 流元数据（StreamOpen 协商） */
+  metadata(): Promise<Record<string, string>>;
+  /** 结束码（0 正常 / 非 0 异常；流结束后有效） */
+  endCode(): Promise<number>;
+  /** 结束原因（流结束后有效） */
+  endMessage(): Promise<string | null>;
 }
 
 /** 底层服务端构建器 */

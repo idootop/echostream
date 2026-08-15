@@ -9,6 +9,12 @@ function addHeapObject(obj) {
     return idx;
 }
 
+function addBorrowedObject(obj) {
+    if (stack_pointer == 1) throw new Error('out of js stack');
+    heap[--stack_pointer] = obj;
+    return stack_pointer;
+}
+
 function debugString(val) {
     // primitive types
     const type = typeof val;
@@ -169,6 +175,8 @@ function passStringToWasm0(arg, malloc, realloc) {
     return ptr;
 }
 
+let stack_pointer = 128;
+
 function takeObject(idx) {
     const ret = getObject(idx);
     dropObject(idx);
@@ -233,6 +241,15 @@ export class ClientCoreHandle {
     off_stream(id) {
         const ret = wasm.clientcorehandle_off_stream(this.__wbg_ptr, id);
         return ret !== 0;
+    }
+    /**
+     * 查询流的结束信息（StreamEnd 记录；返回 { code, message, metadata } 或 null）
+     * @param {bigint} id
+     * @returns {any | undefined}
+     */
+    stream_end(id) {
+        const ret = wasm.clientcorehandle_stream_end(this.__wbg_ptr, id);
+        return takeObject(ret);
     }
     /**
      * 构造事件帧
@@ -328,14 +345,27 @@ export class ClientCoreHandle {
         }
     }
     /**
-     * 构造流结束标记（WebSocket 传输的流关闭）
+     * 查询流的元数据（StreamOpen 记录；返回 Record<string, string | Uint8Array>）
      * @param {bigint} id
+     * @returns {any | undefined}
+     */
+    stream_metadata(id) {
+        const ret = wasm.clientcorehandle_stream_metadata(this.__wbg_ptr, id);
+        return takeObject(ret);
+    }
+    /**
+     * 构造流结束帧（WebSocket 传输的流关闭；code=0 正常，非 0 异常/取消）
+     * @param {bigint} id
+     * @param {number} code
+     * @param {string | null} [message]
      * @returns {Uint8Array}
      */
-    build_stream_end(id) {
+    build_stream_end(id, code, message) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.clientcorehandle_build_stream_end(retptr, this.__wbg_ptr, id);
+            var ptr0 = isLikeNone(message) ? 0 : passStringToWasm0(message, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+            var len0 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_stream_end(retptr, this.__wbg_ptr, id, code, ptr0, len0);
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -343,29 +373,27 @@ export class ClientCoreHandle {
             if (r3) {
                 throw takeObject(r2);
             }
-            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
             wasm.__wbindgen_export4(r0, r1 * 1, 1);
-            return v1;
+            return v2;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
     /**
-     * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
+     * 构造流开始帧（流协商：名称 + 元数据；流首帧必须为此帧）
+     * metadata：Record<string, string | number | Uint8Array>
      * @param {bigint} id
      * @param {string} name
-     * @param {Uint8Array} payload
-     * @param {bigint} sender_ts
+     * @param {any} metadata
      * @returns {Uint8Array}
      */
-    build_stream_frame(id, name, payload, sender_ts) {
+    build_stream_open(id, name, metadata) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
             const len0 = WASM_VECTOR_LEN;
-            const ptr1 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
-            const len1 = WASM_VECTOR_LEN;
-            wasm.clientcorehandle_build_stream_frame(retptr, this.__wbg_ptr, id, ptr0, len0, ptr1, len1, sender_ts);
+            wasm.clientcorehandle_build_stream_open(retptr, this.__wbg_ptr, id, ptr0, len0, addBorrowedObject(metadata));
             var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
             var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
             var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -373,12 +401,47 @@ export class ClientCoreHandle {
             if (r3) {
                 throw takeObject(r2);
             }
-            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
             wasm.__wbindgen_export4(r0, r1 * 1, 1);
-            return v3;
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
+    }
+    /**
+     * 构造流数据帧（自动递增序号；senderTs 为毫秒墙钟）
+     * @param {bigint} id
+     * @param {Uint8Array} payload
+     * @param {bigint} sender_ts
+     * @returns {Uint8Array}
+     */
+    build_stream_frame(id, payload, sender_ts) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(payload, wasm.__wbindgen_export);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.clientcorehandle_build_stream_frame(retptr, this.__wbg_ptr, id, ptr0, len0, sender_ts);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export4(r0, r1 * 1, 1);
+            return v2;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
+    }
+    /**
+     * 清理已结束流的内部状态（避免元数据累积）
+     * @param {bigint} id
+     */
+    remove_stream_state(id) {
+        wasm.clientcorehandle_remove_stream_state(this.__wbg_ptr, id);
     }
     /**
      * 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
@@ -513,8 +576,8 @@ export class ClientCoreHandle {
         return ret !== 0;
     }
     /**
-     * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
-     * 返回监听 id（off_stream 取消注册）
+     * 注册入站流处理器（处理对端推送的流；回调：frame 对象或 null），
+     * 帧对象含 { id, seq, senderTs, data: Uint8Array }，返回监听 id（off_stream 取消注册）
      * @param {string} name
      * @param {Function} callback
      * @returns {number}
@@ -880,6 +943,16 @@ function __wbg_get_imports() {
         const ret = Reflect.get(getObject(arg0), getObject(arg1));
         return addHeapObject(ret);
     }, arguments) };
+    imports.wbg.__wbg_instanceof_Object_577e21051f7bcb79 = function(arg0) {
+        let result;
+        try {
+            result = getObject(arg0) instanceof Object;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
     imports.wbg.__wbg_instanceof_Uint8Array_da54ccc9d3e09434 = function(arg0) {
         let result;
         try {

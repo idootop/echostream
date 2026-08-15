@@ -9,6 +9,10 @@ export class ClientCoreHandle {
    */
   off_stream(id: number): boolean;
   /**
+   * 查询流的结束信息（StreamEnd 记录；返回 { code, message, metadata } 或 null）
+   */
+  stream_end(id: bigint): any | undefined;
+  /**
    * 构造事件帧
    */
   build_event(name: string, payload: Uint8Array): Uint8Array;
@@ -25,13 +29,26 @@ export class ClientCoreHandle {
    */
   handle_inbound(frame: Uint8Array): Uint8Array | undefined;
   /**
-   * 构造流结束标记（WebSocket 传输的流关闭）
+   * 查询流的元数据（StreamOpen 记录；返回 Record<string, string | Uint8Array>）
    */
-  build_stream_end(id: bigint): Uint8Array;
+  stream_metadata(id: bigint): any | undefined;
   /**
-   * 构造流数据帧（自动递增序号；senderTs 为毫秒时间戳）
+   * 构造流结束帧（WebSocket 传输的流关闭；code=0 正常，非 0 异常/取消）
    */
-  build_stream_frame(id: bigint, name: string, payload: Uint8Array, sender_ts: bigint): Uint8Array;
+  build_stream_end(id: bigint, code: number, message?: string | null): Uint8Array;
+  /**
+   * 构造流开始帧（流协商：名称 + 元数据；流首帧必须为此帧）
+   * metadata：Record<string, string | number | Uint8Array>
+   */
+  build_stream_open(id: bigint, name: string, metadata: any): Uint8Array;
+  /**
+   * 构造流数据帧（自动递增序号；senderTs 为毫秒墙钟）
+   */
+  build_stream_frame(id: bigint, payload: Uint8Array, sender_ts: bigint): Uint8Array;
+  /**
+   * 清理已结束流的内部状态（避免元数据累积）
+   */
+  remove_stream_state(id: bigint): void;
   /**
    * 构造数据报事件载荷（不可靠通道；WebTransport.sendDatagram / QUIC datagram）
    */
@@ -68,8 +85,8 @@ export class ClientCoreHandle {
    */
   off_event(id: number): boolean;
   /**
-   * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
-   * 返回监听 id（off_stream 取消注册）
+   * 注册入站流处理器（处理对端推送的流；回调：frame 对象或 null），
+   * 帧对象含 { id, seq, senderTs, data: Uint8Array }，返回监听 id（off_stream 取消注册）
    */
   on_stream(name: string, callback: Function): number;
 }
@@ -142,8 +159,9 @@ export interface InitOutput {
   readonly clientcorehandle_build_error_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
   readonly clientcorehandle_build_event: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly clientcorehandle_build_response: (a: number, b: number, c: bigint, d: number, e: number) => void;
-  readonly clientcorehandle_build_stream_end: (a: number, b: number, c: bigint) => void;
-  readonly clientcorehandle_build_stream_frame: (a: number, b: number, c: bigint, d: number, e: number, f: number, g: number, h: bigint) => void;
+  readonly clientcorehandle_build_stream_end: (a: number, b: number, c: bigint, d: number, e: number, f: number) => void;
+  readonly clientcorehandle_build_stream_frame: (a: number, b: number, c: bigint, d: number, e: number, f: bigint) => void;
+  readonly clientcorehandle_build_stream_open: (a: number, b: number, c: bigint, d: number, e: number, f: number) => void;
   readonly clientcorehandle_handle_inbound: (a: number, b: number, c: number, d: number) => void;
   readonly clientcorehandle_new: () => number;
   readonly clientcorehandle_off_event: (a: number, b: number) => number;
@@ -153,7 +171,10 @@ export interface InitOutput {
   readonly clientcorehandle_on_rpc: (a: number, b: number, c: number, d: number) => number;
   readonly clientcorehandle_on_stream: (a: number, b: number, c: number, d: number) => number;
   readonly clientcorehandle_open_stream: (a: number, b: number, c: number) => bigint;
+  readonly clientcorehandle_remove_stream_state: (a: number, b: bigint) => void;
   readonly clientcorehandle_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly clientcorehandle_stream_end: (a: number, b: bigint) => number;
+  readonly clientcorehandle_stream_metadata: (a: number, b: bigint) => number;
   readonly decode_bytes: (a: number, b: number, c: number) => void;
   readonly decode_i64: (a: number, b: number, c: number) => void;
   readonly decode_message: (a: number, b: number, c: number) => void;

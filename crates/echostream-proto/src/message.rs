@@ -60,10 +60,12 @@ impl StreamMetaEntry {
 
 /// 流开始帧：流协商（必须为流首帧）
 ///
-/// metadata 常用约定（业界通用命名）：
+/// metadata 为可扩展键值对，承载上层语义（核心协议本身不理解这些字段，
+/// 由上层插件 / 示例定义约定）。常用约定（业界通用命名）：
 /// - 音视频：codec=opus/h264、samplerate=48000、channels=2、bitrate=128000、
 ///   width=1920、height=1080、fps=30
-/// - 时间同步：clock-rate=48000（rtp_ts 的单位；无则 rtp_ts 未使用）
+/// - 时间同步：clock-rate=48000、timescale=1000000（采样时钟协商，帧内采样
+///   时间由上层在载荷中实现）
 /// - 文件传输：filename、size、mime
 /// - 自定义扩展：任意键值
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -77,27 +79,20 @@ pub struct StreamOpenMsg {
 }
 
 /// 流数据帧（名称仅在 StreamOpen 携带，数据帧按 id 路由）
+///
+/// 核心协议只承载传输语义（有序可靠帧 + 序列号 + 墙钟时间戳）；
+/// 上层语义（采样时钟 / 关键帧标记 / 文件分块等）通过 StreamOpen 的
+/// 可扩展 metadata 协商，并由上层插件或示例在载荷内实现。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StreamMsg {
     /// 所属流的 ID
     pub id: u64,
     /// 帧序列号（单调递增，用于丢包检测和排序）
     pub seq: u64,
-    /// 帧标志（见 stream_flags）
-    pub flags: u8,
     /// 发送方墙钟时间戳（毫秒，用于时间对齐与延迟测量）
     pub sender_ts: Timestamp,
-    /// 采样时间戳（0 = 未使用；单位由 StreamOpen.metadata 的 clock-rate 约定，
-    /// 音视频场景用于播放同步与抖动缓冲）
-    pub rtp_ts: u64,
     /// 流数据
     pub data: Bytes,
-}
-
-/// 流帧标志位
-pub mod stream_flags {
-    /// 关键帧（视频 I 帧 / 音频首包 / 文件头）：可独立解码，接收方可据此做快进/丢帧
-    pub const KEY_FRAME: u8 = 1 << 0;
 }
 
 /// 流结束帧（必须为流末帧；QUIC 上为流关闭前的最后一帧）

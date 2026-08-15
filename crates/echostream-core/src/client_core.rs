@@ -115,21 +115,12 @@ impl ClientCore {
     }
 
     /// 构造流数据帧（自动递增序号；时间戳由调用方提供，WASM 环境无系统时钟）
-    pub fn build_stream_frame(
-        &mut self,
-        id: u64,
-        data: Bytes,
-        sender_ts: u64,
-        flags: u8,
-        rtp_ts: u64,
-    ) -> Message {
+    pub fn build_stream_frame(&mut self, id: u64, data: Bytes, sender_ts: u64) -> Message {
         let seq = self.stream_seq.entry(id).or_insert(0);
         let frame = Message::Stream(StreamMsg {
             id,
             seq: *seq,
-            flags,
             sender_ts: Timestamp(sender_ts),
-            rtp_ts,
             data,
         });
         *seq += 1;

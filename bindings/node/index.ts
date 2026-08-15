@@ -187,6 +187,21 @@ export class StreamReceiver {
     const frame = await this._n.recv();
     return frame === null ? null : (decodePayload(frame) as T);
   }
+
+  /** 流元数据（来自 StreamOpen 首帧：音视频参数 / 文件信息等） */
+  async metadata(): Promise<Record<string, string>> {
+    return this._n.metadata();
+  }
+
+  /** 结束码（0 正常 / 非 0 异常；流结束后有效，未结束返回 0） */
+  async endCode(): Promise<number> {
+    return this._n.endCode();
+  }
+
+  /** 结束原因（流结束后有效；未结束返回 null） */
+  async endMessage(): Promise<string | null> {
+    return this._n.endMessage();
+  }
 }
 
 // ======================== 服务端 ========================

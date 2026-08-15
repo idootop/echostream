@@ -8,7 +8,7 @@ pub use async_trait::async_trait;
 pub use echostream_core::*;
 pub use echostream_proto::{
     Error, EventMsg, Message, RequestMsg, ResponseMsg, Result, StatusCode, StreamEndMsg,
-    StreamMetaEntry, StreamMsg, StreamOpenMsg, Timestamp, stream_flags,
+    StreamMetaEntry, StreamMsg, StreamOpenMsg, Timestamp,
 };
 /// QUIC 便捷 API：ServerBuilder::bind / ClientBuilder::connect（echostream-transport）
 pub use echostream_transport::{ClientBuilderExt, ServerBuilderExt};

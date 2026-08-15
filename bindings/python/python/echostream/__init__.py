@@ -161,6 +161,18 @@ class StreamReceiver:
         frame = self._n.recv()
         return None if frame is None else decode_payload(frame)
 
+    def metadata(self):
+        """流元数据（StreamOpen 首帧协商：音视频参数 / 文件信息等）"""
+        return self._n.metadata()
+
+    def end_code(self):
+        """结束码（0 正常 / 非 0 异常；流结束后有效）"""
+        return self._n.end_code()
+
+    def end_message(self):
+        """结束原因（流结束后有效；未结束返回 None）"""
+        return self._n.end_message()
+
 
 class ServerBuilder:
     """服务端构建器（处理器参数自动解码、返回值自动编码）"""

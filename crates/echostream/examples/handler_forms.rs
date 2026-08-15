@@ -90,17 +90,25 @@ async fn st_with_session(session: &Session, stream: StreamReceiver) -> Result<()
 
 /// 省略 Session
 #[stream("st_plain")]
-async fn st_plain(stream: StreamReceiver) -> Result<()> {
-    use futures::StreamExt;
+async fn st_plain(mut stream: StreamReceiver) -> Result<()> {
     println!("[server] 流 st_plain 开始");
-    let frames = stream.into_stream_typed::<String>();
-    futures::pin_mut!(frames);
+    println!(
+        "[server] st_plain 元数据: codec={:?} samplerate={:?} filename={:?}",
+        stream.get_metadata("codec"),
+        stream.get_metadata("samplerate"),
+        stream.get_metadata("filename"),
+    );
     let mut n = 0;
-    while let Some(frame) = frames.next().await {
-        println!("[server] st_plain 帧: {frame:?}");
+    while let Some(text) = stream.recv::<String>().await? {
+        println!("[server] st_plain 帧: {text}");
         n += 1;
     }
-    println!("[server] 流 st_plain 结束（{n} 帧）");
+    // 结束码与原因（sender 通过 finish_with 指定）
+    println!(
+        "[server] 流 st_plain 结束（{n} 帧）code={} message={:?}",
+        stream.end_code(),
+        stream.end_message(),
+    );
     Ok(())
 }
 
@@ -156,13 +164,25 @@ async fn main() -> Result<()> {
     client.emit("ev_tick_session", &()).await?;
     client.emit("ev_tick", &()).await?;
 
-    // Stream 两形态
+    // Stream 两形态（含元数据协商与结束码）
     let mut s1 = client.create_stream("st_with_session").await?;
     s1.send("frame-1").await?;
     s1.finish().await?;
-    let mut s2 = client.create_stream("st_plain").await?;
+
+    // 带流元数据（音视频/文件场景：codec/samplerate/filename）+ 异常结束码
+    let mut s2 = client
+        .create_stream_with_metadata(
+            "st_plain",
+            vec![
+                StreamMetaEntry::str("codec", "h264"),
+                StreamMetaEntry::num("samplerate", 48000),
+                StreamMetaEntry::str("filename", "demo.mp4"),
+            ],
+        )
+        .await?;
     s2.send("frame-2").await?;
-    s2.finish().await?;
+    s2.finish_with(7, Some("client cancelled".to_string()), vec![])
+        .await?;
 
     tokio::time::sleep(Duration::from_millis(300)).await;
     client.close();

@@ -84,9 +84,7 @@ async fn message_roundtrip_all_variants() {
         Message::Stream(StreamMsg {
             id: 3,
             seq: 0,
-            flags: 0,
             sender_ts: Timestamp(123456),
-            rtp_ts: 0,
             data: Bytes::from(vec![0u8; 4096]),
         }),
         Message::StreamEnd(StreamEndMsg {
