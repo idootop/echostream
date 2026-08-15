@@ -97,8 +97,11 @@ class Client:
     def emit_unreliable(self, name, payload=None, **kw):
         self._n.emit_unreliable(name, _encode_args(payload, kw))
 
-    def create_stream(self, name):
-        return Stream(self._n.create_stream(name))
+    def create_stream(self, name, metadata=None):
+        """创建流；metadata 可选（音视频参数 / 文件信息等协商，如 {"codec": "h264", "width": 1920}）"""
+        if metadata is None:
+            return Stream(self._n.create_stream(name))
+        return Stream(self._n.create_stream_with_metadata(name, metadata))
 
     def on_event(self, name, handler):
         """注册事件监听，返回取消注册函数（off）"""

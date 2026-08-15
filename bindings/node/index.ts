@@ -104,6 +104,14 @@ export class Client {
     return new Stream(await this._n.createStream(name));
   }
 
+  /** 创建流并携带元数据协商（音视频参数 / 文件信息等，如 { codec: "h264", width: 1920 }） */
+  async createStreamWithMetadata(
+    name: string,
+    metadata: Record<string, string | number | boolean>,
+  ): Promise<Stream> {
+    return new Stream(await this._n.createStreamWithMetadata(name, metadata));
+  }
+
   /**
    * 注册事件监听（载荷自动解码并展开；TArgs 为解码后的参数元组），返回取消注册函数
    */

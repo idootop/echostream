@@ -140,11 +140,9 @@ pub struct StreamReceiver {
 }
 
 impl StreamReceiver {
-    pub(crate) fn new(
-        io: Box<dyn FrameIo>,
-        first: StreamMsg,
-        metadata: Vec<StreamMetaEntry>,
-    ) -> Self {
+    /// 构造接收器（供框架分派与扩展 crate 测试使用；业务请通过流处理器获得）
+    #[doc(hidden)]
+    pub fn new(io: Box<dyn FrameIo>, first: StreamMsg, metadata: Vec<StreamMetaEntry>) -> Self {
         Self {
             id: first.id,
             name: String::new(), // 由 dispatch 通过 with_name 填充

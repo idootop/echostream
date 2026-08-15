@@ -56,7 +56,9 @@ let client = ClientBuilder::new().connect(found[0].address()).await?;
 ## 特性
 
 - `derive`（默认）：`#[rpc]` / `#[event]` / `#[stream]` 过程宏
-- `discovery`（默认）：mDNS 服务发现
+- `discovery`（默认）：mDNS 服务发现（extensions/echostream-discovery）
+- `file`：文件流传输（echostream::file：FileSender / recv_file 等）
+- `av`：音视频推流/接收（echostream::av：AvSender / AvReceiver 等）
 
 ## 多端
 

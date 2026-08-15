@@ -16,7 +16,7 @@ EchoStream 通过 QUIC 在单连接上同时承载控制信令与实时数据流
 - **基于 QUIC**：多路复用、0-RTT、自动拥塞控制、TLS 1.3 加密
 - **开箱即用**：自动生成自签名证书，开发环境零配置
 - **声明式宏**：`#[rpc]` / `#[event]` / `#[stream]`，业务只写强类型函数
-- **可扩展**：中间件（数据面）+ 插件（控制面）+ mDNS 服务发现（可选）
+- **可扩展**：插件（控制面）+ 中间件（数据面）+ 扩展（场景工具：文件传输 / 音视频流）+ mDNS 服务发现（可选）
 
 ## 快速开始（Rust）
 
@@ -116,9 +116,9 @@ echostream                 统一入口（重导出 + prelude + 宏 + QUIC 便�
 │                                复用通道/连接池 + 无 I/O 状态机 ClientCore（io feature 控制 tokio，WASM 可编译）
 ├── echostream-transport        传输层：QUIC（默认）/ WebSocket / WebTransport 三 feature
 ├── echostream-derive           过程宏：#[rpc] / #[event] / #[stream]
-├── echostream-discovery        mDNS 局域网服务发现（可选）
-├── plugins/                    基础插件：auth / reconnect / retry / metrics / heartbeat
-├── middlewares/                基础中间件：logging / timeout / error / transform
+├── plugins/                    控制面插件：auth / reconnect / retry / metrics / heartbeat
+├── middlewares/                数据面中间件：logging / timeout / error / transform
+├── extensions/                 场景扩展：echostream-discovery（mDNS 发现）/ echostream-file（文件传输）/ echostream-av（音视频推流接收）
 └── bindings/                   Node（napi-rs）/ Python（PyO3）/ WASM（wasm-bindgen）/ Web（浏览器 SDK）
 ```
 

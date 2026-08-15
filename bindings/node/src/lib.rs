@@ -78,6 +78,24 @@ impl JsClient {
         })
     }
 
+    /// 创建流并携带元数据（metadata: Record<string, string | number | boolean | Uint8Array>）
+    #[napi]
+    pub async fn create_stream_with_metadata(
+        &self,
+        name: String,
+        metadata: serde_json::Value,
+    ) -> napi::Result<JsStream> {
+        let meta = json_meta_to_entries(&metadata)?;
+        let stream = self
+            .client
+            .create_stream_with_metadata(&name, meta)
+            .await
+            .map_err(to_napi_err)?;
+        Ok(JsStream {
+            inner: tokio::sync::Mutex::new(stream),
+        })
+    }
+
     /// 注册事件监听（回调收到事件载荷 Buffer），返回注册 token（off_event 取消注册）
     #[napi]
     pub fn on_event(&self, name: String, callback: ThreadsafeFunction<Buffer>) -> u32 {
@@ -471,4 +489,30 @@ impl JsServerBuilder {
             ctx: self.ctx.clone(),
         })
     }
+}
+
+/// serde_json 对象 → 流元数据（字符串/数字/布尔统一转 UTF-8 文本；数组与嵌套对象不支持）
+fn json_meta_to_entries(
+    value: &serde_json::Value,
+) -> napi::Result<Vec<echostream::StreamMetaEntry>> {
+    use echostream::StreamMetaEntry;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| napi::Error::from_reason("metadata 必须是对象"))?;
+    let mut out = Vec::with_capacity(obj.len());
+    for (k, v) in obj {
+        let s = match v {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => continue,
+            _ => {
+                return Err(napi::Error::from_reason(format!(
+                    "metadata 值 {k} 类型不支持（仅字符串/数字/布尔）"
+                )));
+            }
+        };
+        out.push(StreamMetaEntry::str(k, s));
+    }
+    Ok(out)
 }

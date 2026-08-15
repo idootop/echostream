@@ -9,6 +9,8 @@ export interface NativeClient {
   emit(name: string, payload: Uint8Array): Promise<void>;
   emitUnreliable(name: string, payload: Uint8Array): Promise<void>;
   createStream(name: string): Promise<NativeStream>;
+  /** 创建流并携带元数据（Record<string, string | number | boolean>） */
+  createStreamWithMetadata(name: string, metadata: Record<string, string | number | boolean>): Promise<NativeStream>;
   onEvent(name: string, callback: (err: Error | null, payload: Uint8Array) => void): number;
   offEvent(token: number): boolean;
   onRpc(

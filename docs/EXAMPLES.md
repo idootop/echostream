@@ -14,6 +14,8 @@
 | plugin_stack | 插件栈：认证 / 重连 / RPC 重试 / 日志 全链路 | cargo run -p echostream --example plugin_stack |
 | middleware_stack | 中间件栈：超时 / 错误归一化 / 转换 / 指标 / 心跳 全链路 | cargo run -p echostream --example middleware_stack |
 | handler_forms | 处理器签名全形态（session 可省略 / 无参数）端到端 | cargo run -p echostream --example handler_forms |
+| file_transfer | 文件流传输：1MiB 分块发送 + sha256 校验和 + 内容比对 | cargo run -p echostream --example file_transfer |
+| av_stream | 音视频推流/播放：参数协商 + 关键帧 + pts 时间同步 | cargo run -p echostream --example av_stream |
 | chat_server | 常驻服务端（Node/Python 绑定测试用） | cargo run -p echostream --example chat_server |
 | e2e_peer | 跨端矩阵通用对端（server / client 双角色） | cargo run -p echostream --release --example e2e_peer -- --server/--client |
 | bench | 基准测试（RPC 延迟/吞吐、复用通道、连接池、事件、流） | cargo run -p echostream --example bench --release |

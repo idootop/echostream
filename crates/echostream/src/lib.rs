@@ -17,9 +17,17 @@ pub use echostream_transport::{ClientBuilderExt, ServerBuilderExt};
 #[cfg(feature = "derive")]
 pub use echostream_derive::{event, rpc, stream};
 
-/// 服务发现（feature = "discovery"）
+/// 服务发现（feature = "discovery"；场景扩展 echostream-discovery）
 #[cfg(feature = "discovery")]
 pub use echostream_discovery::{Advertiser, Discovery, ServiceInfo};
+
+/// 文件流传输扩展（feature = "file"）：FileSender / recv_file / recv_to_memory / FileStreamExt
+#[cfg(feature = "file")]
+pub use echostream_file as file;
+
+/// 音视频流扩展（feature = "av"）：AvSender / AvReceiver / AvFrame / AvParams
+#[cfg(feature = "av")]
+pub use echostream_av as av;
 
 /// 常用类型预导入
 pub mod prelude {

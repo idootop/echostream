@@ -20,6 +20,8 @@ serde = { workspace = true }
 
 echostream-derive = { workspace = true, optional = true }
 echostream-discovery = { workspace = true, optional = true }
+echostream-file = { workspace = true, optional = true }
+echostream-av = { workspace = true, optional = true }
 futures = "0.3"
 
 [dev-dependencies]
@@ -33,6 +35,8 @@ echostream-middleware-error = { path = "../../middlewares/echostream-middleware-
 echostream-middleware-transform = { path = "../../middlewares/echostream-middleware-transform" }
 echostream-plugin-metrics = { path = "../../plugins/echostream-plugin-metrics" }
 echostream-plugin-heartbeat = { path = "../../plugins/echostream-plugin-heartbeat" }
+echostream-file = { path = "../../extensions/echostream-file" }
+echostream-av = { path = "../../extensions/echostream-av" }
 bytes = { workspace = true }
 postcard = { workspace = true }
 tracing = { workspace = true }
@@ -42,3 +46,5 @@ tracing-subscriber = { workspace = true }
 default = ["derive", "discovery"]
 derive = ["dep:echostream-derive"]
 discovery = ["dep:echostream-discovery"]
+file = ["dep:echostream-file"]
+av = ["dep:echostream-av"]

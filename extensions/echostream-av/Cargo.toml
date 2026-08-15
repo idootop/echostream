@@ -1,0 +1,12 @@
+[package]
+name = "echostream-av"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 音视频流扩展：推流/接收（play/record），codec 参数协商 + 帧内 pts/关键帧封装"
+
+[dependencies]
+echostream-core = { workspace = true }
+echostream-proto = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }

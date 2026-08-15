@@ -32,9 +32,13 @@
 | echostream-core | Server/Client（Builder，含连接池 pool(n)，传输无关）、Session（双向通信 + 事件/RPC 复用通道）、Router、强类型 Handler、中间件、插件、ServerContext、无 I/O 状态机 ClientCore | proto、tokio（io feature，默认开） |
 | echostream-transport | QUIC（quic 默认：端点/流/数据报/证书 + ServerBuilderExt::bind / ClientBuilderExt::connect）、WebSocket（ws：WsServer）、WebTransport（web：WebServer） | core、proto、quinn/tokio-tungstenite/wtransport（按 feature） |
 | echostream-derive | #[rpc]/#[event]/#[stream] | syn/quote/proc-macro2 |
-| echostream-discovery | mDNS 发现：Discovery::advertise/discover/discover_stream + ServiceInfo（builder） | proto、mdns-sd、tokio |
+| echostream-file | 场景扩展：文件流传输（分块发送 + sha256 校验和 + 大小校验） | core |
+| echostream-av | 场景扩展：音视频推流/接收（参数协商 + pts/关键帧封装） | core |
+| echostream-discovery | 场景扩展：mDNS 发现：Discovery::advertise/discover/discover_stream + ServiceInfo（builder） | proto、mdns-sd、tokio |
 | echostream-middleware-* | 数据面扩展集合：logging/timeout/error/transform | core |
 | echostream-plugin-* | 控制面扩展集合：auth/reconnect/retry/metrics/heartbeat | core（reconnect 另依赖 transport quic） |
+| echostream-file | 场景扩展：文件流传输（分块 + sha256 校验 + 大小校验） | core |
+| echostream-av | 场景扩展：音视频推流/接收（参数协商 + pts/关键帧封装） | core |
 | echostream | 统一入口：re-export + prelude + 宏 + QUIC 便捷 API | 全部 |
 | bindings/* | 各语言绑定（自动编解码，底层 API 另提供） | 各自工具链 |
 
@@ -53,5 +57,7 @@
   采样时钟 / 关键帧等上层语义由上层插件在载荷内实现，核心协议稳定极简（gRPC headers/messages/trailers 同构）
 - **自动编解码**：proto::dynamic 定义跨语言载荷约定（i64 ZigZag 等），
   Rust derive / WASM / Node postcard.js / Python postcard.py 四端实现一致，字节级交叉验证
-- **扩展机制**：中间件 = 数据面（消息拦截/修改）；插件 = 控制面（生命周期/配置打包）
+- **扩展机制三类**：插件 = 控制面（实现 Plugin trait，install 装配 Builder）；
+  中间件 = 数据面（实现 Middleware trait，洋葱链）；
+  扩展 = 场景工具（业务直接调用的库，如文件传输 / 音视频流，无宿主契约）
 - **多端复用**：ClientCore 状态机 + proto 编解码编译 WASM，Web SDK 与 Rust 原生共享核心

@@ -128,6 +128,18 @@
 - [x] **流元数据布尔支持**：StreamMetaEntry::bool（存储 "true"/"false"）+ StreamReceiver::get_metadata_bool
       （识别 true/false/1/0，非布尔值不误判，单测覆盖）；wasm metadata 编解码支持 JS boolean
       （传入存 "true"/"false"，解码还原 boolean）；SDK StreamMetadata 类型含 boolean；36 测试全绿
+- [x] **场景扩展（extensions/）**：明确生态分类 —— plugins=控制面（Plugin trait）、middlewares=数据面
+      （Middleware trait）、extensions=场景工具（业务直接调用，无宿主契约）
+      - echostream-file：FileSender 分块发送（64KiB）+ recv_file/recv_to_memory，filename/size/mime 协商 +
+        sha256 校验和 trailers + 大小/校验和双重校验（3 单测）
+      - echostream-av：AvSender/AvReceiver，codec/samplerate/clock-rate 等参数协商 + 帧封装
+        [flags|pts LE|数据]（关键帧标记 + pts 时间同步），帧格式不匹配拒绝（5 单测）
+      - examples：file_transfer（1MiB 往返校验和一致）、av_stream（关键帧 + 29 增量帧 + pts 统计）
+      - Node/Python 绑定补 create_stream_with_metadata（跨端 metadata 流能力）
+- [x] **discovery 移入 extensions + facade feature 惯例**：echostream-discovery 归入 extensions/（与 file/av
+      同类：场景工具，无宿主契约）；facade 按业界惯例（tokio/axum）做 feature 门控重导出 ——
+      `file`（echostream::file）/ `av`（echostream::av）可选、`discovery` 保持默认；
+      全 feature 构建 + 36 测试 + clippy/fmt 全绿
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

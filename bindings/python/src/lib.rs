@@ -100,6 +100,38 @@ impl Client {
         })
     }
 
+    /// 创建流并携带元数据协商（dict：字符串 / 数字 / 布尔值）
+    fn create_stream_with_metadata(
+        &self,
+        py: Python<'_>,
+        name: &str,
+        metadata: &Bound<'_, PyDict>,
+    ) -> PyResult<Stream> {
+        use echostream::StreamMetaEntry;
+        let mut meta = Vec::with_capacity(metadata.len());
+        for (k, v) in metadata.iter() {
+            let key = k.extract::<String>()?;
+            if let Ok(s) = v.extract::<String>() {
+                meta.push(StreamMetaEntry::str(key, s));
+            } else if let Ok(n) = v.extract::<i64>() {
+                meta.push(StreamMetaEntry::num(key, n as u64));
+            } else if let Ok(b) = v.extract::<bool>() {
+                meta.push(StreamMetaEntry::bool(key, b));
+            } else {
+                return Err(to_py_err(echostream::Error::InvalidParameter(format!(
+                    "metadata 值 {key} 类型不支持（仅字符串/数字/布尔）"
+                ))));
+            }
+        }
+        let stream = py
+            .detach(|| block_on(self.client.create_stream_with_metadata(name, meta)))
+            .map_err(to_py_err)?
+            .map_err(to_py_err)?;
+        Ok(Stream {
+            inner: tokio::sync::Mutex::new(stream),
+        })
+    }
+
     /// 注册事件监听（回调签名：`handler(data: bytes) -> None`），返回注册 token（off_event 取消注册）
     fn on_event(&self, name: &str, callback: Py<PyAny>) -> u64 {
         self.client

@@ -1,0 +1,17 @@
+[package]
+name = "echostream-file"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "EchoStream 文件流传输扩展：分块发送 + sha256 校验和 + 大小校验（流三帧协议场景扩展）"
+
+[dependencies]
+echostream-core = { workspace = true }
+echostream-proto = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }
+sha2 = "0.10"
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tempfile = "3"
