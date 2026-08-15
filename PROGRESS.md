@@ -93,8 +93,10 @@
       transform（请求/响应载荷转换）；transform 行为单测覆盖（经真实 dispatch 链路验证）
 - [x] **Step 7 新插件**：metrics（请求统计 + 快照 RPC metrics.snapshot）/ heartbeat（客户端周期心跳 +
       服务端失活扫描清理）；middleware_stack 示例全链路验证（transform/超时/错误归一化/指标/心跳 12s 保活）
-- [ ] **Step 8 文档同步**：README / ARCHITECTURE / EXAMPLES / plugins / middlewares
-- [ ] **Step 9 全量验证**：workspace 构建 + 测试 + 示例 + 跨端矩阵
+- [x] **Step 8 文档同步**：README 架构树（plugins 5 + middlewares 4）、ARCHITECTURE 模块职责表、
+      EXAMPLES 示例导航（middleware_stack）、plugins/middlewares README 表格、core README（endpoint().build() 新 API）
+- [x] **Step 9 全量验证**：cargo test 32 passed / 0 failed；5 个示例（simple_rpc/bidi/plugin_stack/middleware_stack/
+      discovery）全部通过；Node/Web 包 typecheck + build + 测试全绿；跨端矩阵 6/6 全 PASS（Python 绑定重建后）
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录
