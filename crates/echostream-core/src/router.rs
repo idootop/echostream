@@ -20,7 +20,8 @@ use crate::stream::StreamReceiver;
 
 /// 中间件链终点：接收（可能被中间件修改过的）消息，执行实际处理，
 /// 返回最终结果（RPC 为响应帧；事件 / 流为 None 表示已消费）
-type Terminal = Arc<dyn Fn(Message) -> BoxFuture<'static, Result<Option<Message>, Error>> + Send + Sync>;
+type Terminal =
+    Arc<dyn Fn(Message) -> BoxFuture<'static, Result<Option<Message>, Error>> + Send + Sync>;
 
 /// 注册 token（add_* 返回，供 remove_* 精确移除对应注册项）
 pub type Token = u64;
@@ -31,12 +32,21 @@ pub struct Router {
     inner: Arc<RouterInner>,
 }
 
+/// RPC 注册项（token + 处理器）
+type RpcEntry = (Token, Arc<dyn DynRpcHandler>);
+/// 事件监听注册项
+type EventEntry = (Token, Arc<dyn DynEventHandler>);
+/// 流注册项
+type StreamEntry = (Token, Arc<dyn StreamHandler>);
+/// 中间件注册项
+type MiddlewareEntry = (Token, Arc<dyn Middleware>);
+
 #[derive(Default)]
 struct RouterInner {
-    rpc: RwLock<HashMap<String, (Token, Arc<dyn DynRpcHandler>)>>,
-    event: RwLock<HashMap<String, Vec<(Token, Arc<dyn DynEventHandler>)>>>,
-    stream: RwLock<HashMap<String, (Token, Arc<dyn StreamHandler>)>>,
-    middlewares: RwLock<Vec<(Token, Arc<dyn Middleware>)>>,
+    rpc: RwLock<HashMap<String, RpcEntry>>,
+    event: RwLock<HashMap<String, Vec<EventEntry>>>,
+    stream: RwLock<HashMap<String, StreamEntry>>,
+    middlewares: RwLock<Vec<MiddlewareEntry>>,
     next_token: AtomicU64,
 }
 
@@ -142,18 +152,14 @@ impl Router {
     /// 移除中间件（按注册 token）
     pub fn remove_middleware(&self, token: Token) -> bool {
         let mut found = false;
-        self.inner
-            .middlewares
-            .write()
-            .unwrap()
-            .retain(|(t, _)| {
-                if *t == token {
-                    found = true;
-                    false
-                } else {
-                    true
-                }
-            });
+        self.inner.middlewares.write().unwrap().retain(|(t, _)| {
+            if *t == token {
+                found = true;
+                false
+            } else {
+                true
+            }
+        });
         found
     }
 
@@ -264,7 +270,13 @@ impl Router {
                     return Ok(Some(req_msg));
                 };
                 // 按（可能被中间件修改的）方法名查找处理器
-                let handler = this.inner.rpc.read().unwrap().get(&m.name).map(|(_, h)| h.clone());
+                let handler = this
+                    .inner
+                    .rpc
+                    .read()
+                    .unwrap()
+                    .get(&m.name)
+                    .map(|(_, h)| h.clone());
                 let result = match handler {
                     Some(handler) => handler.handle_encoded(&session, m.data.clone()).await,
                     None => Err(Error::HandlerNotFound(m.name.clone())),
@@ -280,7 +292,9 @@ impl Router {
                 }
             })
         });
-        let result = self.run_chain(session, Message::Request(msg.clone()), terminal).await;
+        let result = self
+            .run_chain(session, Message::Request(msg.clone()), terminal)
+            .await;
         // 写回响应：链结果（Response / 短路值）或错误映射
         let response = match result {
             Ok(Some(Message::Response(r))) => r,
@@ -327,7 +341,8 @@ impl Router {
                     return Ok(Some(evt_msg));
                 };
                 // 按（可能被中间件修改的）事件名查找监听器
-                let handlers = this.inner
+                let handlers = this
+                    .inner
                     .event
                     .read()
                     .unwrap()
@@ -343,7 +358,10 @@ impl Router {
                 Ok(Some(Message::Event(e))) // 已消费（回传消息供中间件观测）
             })
         });
-        match self.run_chain(session, Message::Event(msg.clone()), terminal).await {
+        match self
+            .run_chain(session, Message::Event(msg.clone()), terminal)
+            .await
+        {
             Ok(Some(Message::Event(_))) => {} // 已分发
             Ok(None) => tracing::debug!("事件被中间件拦截: {}", msg.name),
             Ok(Some(m)) => tracing::debug!("事件中间件链未消费消息: {m:?}"),
@@ -370,7 +388,8 @@ impl Router {
                 let Some(recv) = recv.lock().unwrap().take() else {
                     return Err(Error::Protocol("流处理器被重复调用".into()));
                 };
-                let handler = this.inner
+                let handler = this
+                    .inner
                     .stream
                     .read()
                     .unwrap()
@@ -390,7 +409,10 @@ impl Router {
             })
         });
         let stream_name = msg.name.clone();
-        match self.run_chain(session, Message::Stream(msg), terminal).await {
+        match self
+            .run_chain(session, Message::Stream(msg), terminal)
+            .await
+        {
             Ok(Some(Message::Stream(_))) => {} // 已处理（或被未调用 next 的中间件短路）
             Ok(None) => tracing::debug!("流被中间件拦截: {stream_name}"),
             Ok(Some(m)) => tracing::debug!("流中间件链未消费消息: {m:?}"),

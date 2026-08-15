@@ -144,9 +144,7 @@ impl StreamReceiver {
     ///     println!("帧: {}", item?);
     /// }
     /// ```
-    pub fn into_stream_typed<T: DeserializeOwned>(
-        self,
-    ) -> impl Stream<Item = Result<T>> {
+    pub fn into_stream_typed<T: DeserializeOwned>(self) -> impl Stream<Item = Result<T>> {
         unfold(Some(self), |mut recv| async move {
             let result = match recv.as_mut() {
                 Some(r) => r.recv_frame().await,
@@ -173,8 +171,8 @@ impl StreamReceiver {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use echostream_proto::endpoint::FrameIo;
     use echostream_proto::Error;
+    use echostream_proto::endpoint::FrameIo;
 
     /// 测试用内存流：按序返回预置帧
     struct FakeIo {
@@ -257,11 +255,7 @@ mod tests {
             pending: None,
             io,
         };
-        let items: Vec<String> = recv
-            .into_stream_typed()
-            .map(|r| r.unwrap())
-            .collect()
-            .await;
+        let items: Vec<String> = recv.into_stream_typed().map(|r| r.unwrap()).collect().await;
         assert_eq!(items, vec!["hi".to_string(), "world".to_string()]);
     }
 }

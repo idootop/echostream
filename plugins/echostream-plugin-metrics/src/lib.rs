@@ -137,7 +137,12 @@ impl Middleware for MetricsMiddleware {
         "metrics"
     }
 
-    async fn handle(&self, _session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
+    async fn handle(
+        &self,
+        _session: &Session,
+        msg: Message,
+        next: Next,
+    ) -> Result<Option<Message>> {
         // 先按消息类型分类（避免借用冲突），再执行链
         let rpc_name = match &msg {
             Message::Request(r) => Some(r.name.clone()),

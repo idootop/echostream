@@ -90,7 +90,12 @@ impl Middleware for TransformMiddleware {
         &self.name
     }
 
-    async fn handle(&self, _session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
+    async fn handle(
+        &self,
+        _session: &Session,
+        msg: Message,
+        next: Next,
+    ) -> Result<Option<Message>> {
         // 请求方向：进入下游前转换
         let msg = match &self.on_request {
             Some(f) => map_payload(msg, f.as_ref())?,

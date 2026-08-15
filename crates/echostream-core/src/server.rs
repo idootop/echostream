@@ -113,7 +113,9 @@ impl Server {
         slots: &std::sync::RwLock<Vec<(HookId, Hook<T>)>>,
         f: impl Fn(&T) + Send + Sync + 'static,
     ) -> HookId {
-        let id = self.next_hook_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self
+            .next_hook_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         slots.write().unwrap().push((id, Arc::new(f)));
         id
     }

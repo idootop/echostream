@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use bytes::Bytes;
 use echostream_core::{Endpoint, Middleware, Next, Router, ServerContext, Session, StreamReceiver};
-use echostream_proto::{Error, Message, Result, StreamMsg, Timestamp};
+use echostream_proto::{Error, Message, Result};
 
 // ======================== 桩实现 ========================
 
@@ -70,7 +70,7 @@ impl echostream_core::StreamHandler for StreamStub {
         self.0
     }
     async fn handle(&self, _s: &Session, mut stream: StreamReceiver) -> Result<()> {
-        while let Some(_) = stream.recv_frame().await? {}
+        while stream.recv_frame().await?.is_some() {}
         Ok(())
     }
 }

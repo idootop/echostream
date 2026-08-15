@@ -44,7 +44,12 @@ impl Middleware for TimeoutMiddleware {
         &self.name
     }
 
-    async fn handle(&self, _session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
+    async fn handle(
+        &self,
+        _session: &Session,
+        msg: Message,
+        next: Next,
+    ) -> Result<Option<Message>> {
         match tokio::time::timeout(self.timeout, next.run(msg.clone())).await {
             Ok(result) => result,
             Err(_) => {

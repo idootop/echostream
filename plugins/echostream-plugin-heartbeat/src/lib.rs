@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use bytes::Bytes;
 use echostream_core::{
-    ClientBuilder, ClientPlugin, Middleware, Next, ServerBuilder, ServerContext, ServerPlugin, Session,
+    ClientBuilder, ClientPlugin, Middleware, Next, ServerBuilder, ServerContext, ServerPlugin,
+    Session,
 };
 use echostream_proto::{Error, Message, Result};
 
@@ -132,7 +133,12 @@ impl ClientPlugin for HeartbeatClientPlugin {
             tokio::spawn(async move {
                 loop {
                     // 连接断开后停止心跳（发送失败即退出）
-                    if client.session().emit_raw(HEARTBEAT_EVENT, Bytes::new()).await.is_err() {
+                    if client
+                        .session()
+                        .emit_raw(HEARTBEAT_EVENT, Bytes::new())
+                        .await
+                        .is_err()
+                    {
                         return;
                     }
                     tokio::time::sleep(interval).await;

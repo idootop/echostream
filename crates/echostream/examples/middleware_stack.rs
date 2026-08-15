@@ -52,16 +52,13 @@ async fn run_server() -> Result<Server> {
         // 洋葱链（外层 → 内层）：logging → transform → timeout → error → metrics → 处理器
         .middleware(LoggingMiddleware::new())
         // 数据转换：请求载荷剥掉标记字节（配合对端约定；此处演示透传）
-        .middleware(
-            TransformMiddleware::new()
-                .map_request(|data| {
-                    Ok(if data.first() == Some(&0xEE) {
-                        bytes::Bytes::copy_from_slice(&data[1..])
-                    } else {
-                        data
-                    })
-                }),
-        )
+        .middleware(TransformMiddleware::new().map_request(|data| {
+            Ok(if data.first() == Some(&0xEE) {
+                bytes::Bytes::copy_from_slice(&data[1..])
+            } else {
+                data
+            })
+        }))
         // 超时控制：整条链（含处理器）上限 500ms
         .middleware(TimeoutMiddleware::new(Duration::from_millis(500)))
         // 错误归一化：下游错误统一转为错误响应
@@ -89,7 +86,9 @@ async fn run_client() -> Result<()> {
     // 1. 正常 RPC（标记字节协议：客户端发送 0xEE + 载荷）
     let mut tagged = vec![0xEEu8];
     tagged.extend_from_slice(&postcard::to_allocvec(&(10i64, 20i64)).unwrap());
-    let resp = client.request_raw("add", bytes::Bytes::from(tagged)).await?;
+    let resp = client
+        .request_raw("add", bytes::Bytes::from(tagged))
+        .await?;
     let sum: i64 = postcard::from_bytes(&resp).map_err(|e| Error::Serialization(e.to_string()))?;
     assert_eq!(sum, 30);
     println!("[client] add(10, 20) = {sum} ✓");

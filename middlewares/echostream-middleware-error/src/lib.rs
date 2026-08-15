@@ -59,7 +59,12 @@ impl Middleware for ErrorMiddleware {
         &self.name
     }
 
-    async fn handle(&self, _session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
+    async fn handle(
+        &self,
+        _session: &Session,
+        msg: Message,
+        next: Next,
+    ) -> Result<Option<Message>> {
         match next.run(msg.clone()).await {
             Ok(result) => Ok(result),
             Err(e) => {

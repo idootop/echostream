@@ -73,7 +73,10 @@ async fn ev_tick() -> Result<()> {
 #[stream("st_with_session")]
 async fn st_with_session(session: &Session, stream: StreamReceiver) -> Result<()> {
     use futures::StreamExt;
-    println!("[server] 流 st_with_session 开始 <- {}", session.peer_addr());
+    println!(
+        "[server] 流 st_with_session 开始 <- {}",
+        session.peer_addr()
+    );
     let frames = stream.into_stream_typed::<String>();
     futures::pin_mut!(frames);
     let mut n = 0;

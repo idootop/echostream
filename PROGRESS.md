@@ -109,6 +109,9 @@
 - [x] **README 导入审查**：主 README 三端示例的 import 从注释移入代码块并剔除未使用组件
       （Node 的 ServerBuilder 等）；derive/echostream/transport/core README 同步新宏签名与
       endpoint().build() API；node README 测试命令改 pnpm 并修正跨端矩阵路径；web README 文件列表改 .ts
+- [x] **fmt/clippy 全量合规**（CI 同款检查）：修复 handler_forms/middleware_stack 等 11 个文件的
+      rustfmt 差异；core router 复杂类型加 type alias（clippy::type-complexity）；router_test 清理
+      未使用导入与冗余模式匹配；cargo fmt --check + workspace clippy -D warnings 全绿
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录
