@@ -97,6 +97,29 @@ impl Router {
         token
     }
 
+    // ==================== 批量注册 ====================
+
+    /// 批量注册 RPC 处理器，返回各注册 token
+    pub fn add_rpcs<H: DynRpcHandler>(&self, handlers: impl IntoIterator<Item = H>) -> Vec<Token> {
+        handlers.into_iter().map(|h| self.add_rpc(h)).collect()
+    }
+
+    /// 批量注册事件监听器，返回各注册 token
+    pub fn add_events<H: DynEventHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        handlers.into_iter().map(|h| self.add_event(h)).collect()
+    }
+
+    /// 批量注册流处理器，返回各注册 token
+    pub fn add_streams<H: StreamHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        handlers.into_iter().map(|h| self.add_stream(h)).collect()
+    }
+
     /// 移除 RPC 处理器（按注册 token），返回是否移除成功
     pub fn remove_rpc(&self, token: Token) -> bool {
         let removed = self

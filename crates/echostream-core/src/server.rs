@@ -10,7 +10,7 @@ use crate::context::ServerContext;
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
 use crate::middleware::Middleware;
 use crate::plugin::ServerPlugin;
-use crate::router::Router;
+use crate::router::{Router, Token};
 use crate::session::Session;
 
 /// 生命周期钩子类型：同步回调（异步逻辑可在回调内 tokio::spawn）
@@ -48,19 +48,55 @@ impl Server {
         &self.ctx
     }
 
-    /// 运行时注册 RPC 处理器
-    pub fn add_rpc<H: DynRpcHandler>(&self, handler: H) {
-        self.router.add_rpc(handler);
+    /// 运行时注册 RPC 处理器，返回注册 token（remove_rpc 取消注册）
+    pub fn add_rpc<H: DynRpcHandler>(&self, handler: H) -> Token {
+        self.router.add_rpc(handler)
     }
 
-    /// 运行时注册事件监听器
-    pub fn add_event<H: DynEventHandler>(&self, handler: H) {
-        self.router.add_event(handler);
+    /// 批量注册 RPC 处理器，返回各注册 token
+    pub fn add_rpcs<H: DynRpcHandler>(&self, handlers: impl IntoIterator<Item = H>) -> Vec<Token> {
+        self.router.add_rpcs(handlers)
     }
 
-    /// 运行时注册流处理器
-    pub fn add_stream<H: StreamHandler>(&self, handler: H) {
-        self.router.add_stream(handler);
+    /// 取消注册 RPC 处理器（按注册 token）
+    pub fn remove_rpc(&self, token: Token) -> bool {
+        self.router.remove_rpc(token)
+    }
+
+    /// 运行时注册事件监听器，返回注册 token（remove_event 取消注册）
+    pub fn add_event<H: DynEventHandler>(&self, handler: H) -> Token {
+        self.router.add_event(handler)
+    }
+
+    /// 批量注册事件监听器，返回各注册 token
+    pub fn add_events<H: DynEventHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        self.router.add_events(handlers)
+    }
+
+    /// 取消注册事件监听器（按注册 token）
+    pub fn remove_event(&self, token: Token) -> bool {
+        self.router.remove_event(token)
+    }
+
+    /// 运行时注册流处理器，返回注册 token（remove_stream 取消注册）
+    pub fn add_stream<H: StreamHandler>(&self, handler: H) -> Token {
+        self.router.add_stream(handler)
+    }
+
+    /// 批量注册流处理器，返回各注册 token
+    pub fn add_streams<H: StreamHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        self.router.add_streams(handlers)
+    }
+
+    /// 取消注册流处理器（按注册 token）
+    pub fn remove_stream(&self, token: Token) -> bool {
+        self.router.remove_stream(token)
     }
 
     // ==================== 生命周期钩子（运行时注册 / 取消注册） ====================
@@ -345,15 +381,33 @@ impl ServerBuilder {
         self
     }
 
+    /// 批量注册 RPC 处理器
+    pub fn add_rpcs<H: DynRpcHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_rpcs(handlers);
+        self
+    }
+
     /// 注册事件处理器（同名事件支持多个监听器）
     pub fn add_event<H: DynEventHandler>(self, handler: H) -> Self {
         self.router.add_event(handler);
         self
     }
 
+    /// 批量注册事件处理器
+    pub fn add_events<H: DynEventHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_events(handlers);
+        self
+    }
+
     /// 注册流处理器
     pub fn add_stream<H: StreamHandler>(self, handler: H) -> Self {
         self.router.add_stream(handler);
+        self
+    }
+
+    /// 批量注册流处理器
+    pub fn add_streams<H: StreamHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_streams(handlers);
         self
     }
 

@@ -247,6 +247,14 @@ impl Client {
         self.inner.router.add_event(handler)
     }
 
+    /// 批量注册事件监听，返回各注册 token
+    pub fn add_event_handlers<H: DynEventHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        self.inner.router.add_events(handlers)
+    }
+
     /// 取消注册事件监听（按注册 token）
     pub fn remove_event_handler(&self, token: Token) -> bool {
         self.inner.router.remove_event(token)
@@ -257,6 +265,14 @@ impl Client {
         self.inner.router.add_rpc(handler)
     }
 
+    /// 批量注册 RPC 处理器，返回各注册 token
+    pub fn add_rpc_handlers<H: DynRpcHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        self.inner.router.add_rpcs(handlers)
+    }
+
     /// 取消注册 RPC 处理器（按注册 token）
     pub fn remove_rpc_handler(&self, token: Token) -> bool {
         self.inner.router.remove_rpc(token)
@@ -265,6 +281,14 @@ impl Client {
     /// 运行时注册流处理器，返回注册 token
     pub fn add_stream_handler<H: StreamHandler>(&self, handler: H) -> Token {
         self.inner.router.add_stream(handler)
+    }
+
+    /// 批量注册流处理器，返回各注册 token
+    pub fn add_stream_handlers<H: StreamHandler>(
+        &self,
+        handlers: impl IntoIterator<Item = H>,
+    ) -> Vec<Token> {
+        self.inner.router.add_streams(handlers)
     }
 
     /// 取消注册流处理器（按注册 token）
@@ -354,15 +378,33 @@ impl ClientBuilder {
         self
     }
 
+    /// 批量注册 RPC 处理器
+    pub fn add_rpcs<H: DynRpcHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_rpcs(handlers);
+        self
+    }
+
     /// 注册事件处理器（接收服务端推送的事件）
     pub fn add_event<H: DynEventHandler>(self, handler: H) -> Self {
         self.router.add_event(handler);
         self
     }
 
+    /// 批量注册事件处理器
+    pub fn add_events<H: DynEventHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_events(handlers);
+        self
+    }
+
     /// 注册流处理器（接收服务端推送的流）
     pub fn add_stream<H: StreamHandler>(self, handler: H) -> Self {
         self.router.add_stream(handler);
+        self
+    }
+
+    /// 批量注册流处理器
+    pub fn add_streams<H: StreamHandler>(self, handlers: impl IntoIterator<Item = H>) -> Self {
+        self.router.add_streams(handlers);
         self
     }
 
