@@ -220,6 +220,15 @@ class ClientCoreHandle {
         wasm.__wbg_clientcorehandle_free(ptr, 0);
     }
     /**
+     * 取消注册流处理器（按 on_stream 返回的 id）
+     * @param {number} id
+     * @returns {boolean}
+     */
+    off_stream(id) {
+        const ret = wasm.clientcorehandle_off_stream(this.__wbg_ptr, id);
+        return ret !== 0;
+    }
+    /**
      * 构造事件帧
      * @param {string} name
      * @param {Uint8Array} payload
@@ -424,16 +433,27 @@ class ClientCoreHandle {
         return this;
     }
     /**
-     * 注册 RPC 处理器（处理对端主动调用）
+     * 注册 RPC 处理器（处理对端主动调用），返回监听 id（off_rpc 取消注册）
      * 回调签名：(name: string, data: Uint8Array, id: number) => Uint8Array | null
      * 返回 null 表示异步处理（稍后通过 build_response(id, payload) 补响应）
      * @param {string} name
      * @param {Function} callback
+     * @returns {number}
      */
     on_rpc(name, callback) {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
-        wasm.clientcorehandle_on_rpc(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        const ret = wasm.clientcorehandle_on_rpc(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        return ret >>> 0;
+    }
+    /**
+     * 取消注册 RPC 处理器（按 on_rpc 返回的 id）
+     * @param {number} id
+     * @returns {boolean}
+     */
+    off_rpc(id) {
+        const ret = wasm.clientcorehandle_off_rpc(this.__wbg_ptr, id);
+        return ret !== 0;
     }
     /**
      * 发起 RPC：返回请求帧（长度前缀 + Message）
@@ -466,24 +486,38 @@ class ClientCoreHandle {
         }
     }
     /**
-     * 注册事件监听（回调：name 与 data 两个参数）
+     * 注册事件监听（回调：name 与 data 两个参数），返回监听 id（off_event 取消注册）
      * @param {string} name
      * @param {Function} callback
+     * @returns {number}
      */
     on_event(name, callback) {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
-        wasm.clientcorehandle_on_event(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        const ret = wasm.clientcorehandle_on_event(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        return ret >>> 0;
     }
     /**
-     * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null）
+     * 取消注册事件监听（按 on_event 返回的 id）
+     * @param {number} id
+     * @returns {boolean}
+     */
+    off_event(id) {
+        const ret = wasm.clientcorehandle_off_event(this.__wbg_ptr, id);
+        return ret !== 0;
+    }
+    /**
+     * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
+     * 返回监听 id（off_stream 取消注册）
      * @param {string} name
      * @param {Function} callback
+     * @returns {number}
      */
     on_stream(name, callback) {
         const ptr0 = passStringToWasm0(name, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
-        wasm.clientcorehandle_on_stream(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        const ret = wasm.clientcorehandle_on_stream(this.__wbg_ptr, ptr0, len0, addHeapObject(callback));
+        return ret >>> 0;
     }
 }
 if (Symbol.dispose) ClientCoreHandle.prototype[Symbol.dispose] = ClientCoreHandle.prototype.free;

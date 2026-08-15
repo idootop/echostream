@@ -14,6 +14,9 @@ use echostream_proto::{
     EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
 };
 
+/// 监听注册 id（on_* 返回，供 off_* 精确取消注册）
+pub type ListenerId = u64;
+
 /// 事件监听器：接收事件载荷字节与事件名（状态机为单线程使用，无 Send 约束）
 pub type EventListener = Box<dyn Fn(&str, Bytes)>;
 
@@ -31,10 +34,11 @@ pub type StreamListener = Box<dyn Fn(Option<StreamMsg>)>;
 #[derive(Default)]
 pub struct ClientCore {
     next_id: u64,
+    next_listener_id: u64,
     pending: HashMap<u64, ResponseListener>, // 待响应的 RPC（id -> 响应回调）
-    events: HashMap<String, Vec<EventListener>>,
-    rpcs: HashMap<String, RpcListener>,
-    streams: HashMap<String, StreamListener>,
+    events: HashMap<String, Vec<(ListenerId, EventListener)>>,
+    rpcs: HashMap<String, (ListenerId, RpcListener)>,
+    streams: HashMap<String, (ListenerId, StreamListener)>,
     stream_names: HashMap<u64, String>, // 流 id -> 名称（StreamEnd 按 id 路由）
     stream_seq: HashMap<u64, u64>,      // 流 id -> 下一帧序号
 }
@@ -138,22 +142,82 @@ impl ClientCore {
         })
     }
 
-    /// 注册事件监听
-    pub fn on_event(&mut self, name: &str, listener: impl Fn(&str, Bytes) + 'static) {
+    /// 注册事件监听，返回注册 id（off_event 取消注册）
+    pub fn on_event(&mut self, name: &str, listener: impl Fn(&str, Bytes) + 'static) -> ListenerId {
+        let id = self.next_listener();
         self.events
             .entry(name.to_string())
             .or_default()
-            .push(Box::new(listener));
+            .push((id, Box::new(listener)));
+        id
     }
 
-    /// 注册 RPC 处理器（处理对端主动调用）
-    pub fn on_rpc(&mut self, name: &str, handler: impl Fn(u64, Bytes) -> Option<Bytes> + 'static) {
-        self.rpcs.insert(name.to_string(), Box::new(handler));
+    /// 取消注册事件监听（按注册 id）
+    pub fn off_event(&mut self, id: ListenerId) -> bool {
+        let mut removed = false;
+        for listeners in self.events.values_mut() {
+            listeners.retain(|(i, _)| {
+                if *i == id {
+                    removed = true;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        self.events.retain(|_, listeners| !listeners.is_empty());
+        removed
     }
 
-    /// 注册入站流处理器（按流名路由；None 表示流结束）
-    pub fn on_stream(&mut self, name: &str, handler: impl Fn(Option<StreamMsg>) + 'static) {
-        self.streams.insert(name.to_string(), Box::new(handler));
+    /// 注册 RPC 处理器（处理对端主动调用），返回注册 id（off_rpc 取消注册）
+    pub fn on_rpc(
+        &mut self,
+        name: &str,
+        handler: impl Fn(u64, Bytes) -> Option<Bytes> + 'static,
+    ) -> ListenerId {
+        let id = self.next_listener();
+        self.rpcs.insert(name.to_string(), (id, Box::new(handler)));
+        id
+    }
+
+    /// 取消注册 RPC 处理器（按注册 id）
+    pub fn off_rpc(&mut self, id: ListenerId) -> bool {
+        let mut removed = false;
+        self.rpcs.retain(|_, (i, _)| {
+            if *i == id {
+                removed = true;
+                false
+            } else {
+                true
+            }
+        });
+        removed
+    }
+
+    /// 注册入站流处理器（按流名路由；None 表示流结束），返回注册 id（off_stream 取消注册）
+    pub fn on_stream(
+        &mut self,
+        name: &str,
+        handler: impl Fn(Option<StreamMsg>) + 'static,
+    ) -> ListenerId {
+        let id = self.next_listener();
+        self.streams
+            .insert(name.to_string(), (id, Box::new(handler)));
+        id
+    }
+
+    /// 取消注册流处理器（按注册 id）
+    pub fn off_stream(&mut self, id: ListenerId) -> bool {
+        let mut removed = false;
+        self.streams.retain(|_, (i, _)| {
+            if *i == id {
+                removed = true;
+                false
+            } else {
+                true
+            }
+        });
+        removed
     }
 
     /// 处理入站消息（网络层收到一帧后调用）
@@ -173,14 +237,14 @@ impl ClientCore {
             }
             Message::Event(event) => {
                 if let Some(listeners) = self.events.get(&event.name) {
-                    for l in listeners {
+                    for (_, l) in listeners {
                         l(&event.name, event.data.clone());
                     }
                 }
                 None
             }
             Message::Request(req) => {
-                if let Some(handler) = self.rpcs.get(&req.name) {
+                if let Some((_, handler)) = self.rpcs.get(&req.name) {
                     match handler(req.id, req.data.clone()) {
                         Some(data) => Some(self.build_response(req.id, data)),
                         None => None, // 异步处理，稍后调用方补响应
@@ -191,14 +255,14 @@ impl ClientCore {
             }
             Message::Stream(frame) => {
                 self.stream_names.insert(frame.id, frame.name.clone());
-                if let Some(handler) = self.streams.get(&frame.name) {
+                if let Some((_, handler)) = self.streams.get(&frame.name) {
                     handler(Some(frame));
                 }
                 None
             }
             Message::StreamEnd(end) => {
                 if let Some(name) = self.stream_names.get(&end.id).cloned()
-                    && let Some(handler) = self.streams.get(&name)
+                    && let Some((_, handler)) = self.streams.get(&name)
                 {
                     handler(None);
                 }
@@ -210,5 +274,10 @@ impl ClientCore {
     fn next_id(&mut self) -> u64 {
         self.next_id += 1;
         self.next_id
+    }
+
+    fn next_listener(&mut self) -> u64 {
+        self.next_listener_id += 1;
+        self.next_listener_id
     }
 }

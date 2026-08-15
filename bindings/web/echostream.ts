@@ -238,11 +238,20 @@ export class EchoStream {
 
   // ======================== Event ========================
 
-  /** 注册事件监听（载荷自动解码；元组载荷按参数展开） */
-  onEvent<TArgs extends unknown[] = unknown[]>(name: string, handler: (...args: TArgs) => void): void {
-    this.core!.on_event(name, (_eventName: string, data: Uint8Array) => {
+  /**
+   * 注册事件监听（载荷自动解码；元组载荷按参数展开），返回取消注册函数
+   * @returns off：调用后不再接收该事件
+   */
+  onEvent<TArgs extends unknown[] = unknown[]>(
+    name: string,
+    handler: (...args: TArgs) => void,
+  ): () => void {
+    const id = this.core!.on_event(name, (_eventName: string, data: Uint8Array) => {
       handler(...(spreadArgs(data) as TArgs));
     });
+    return () => {
+      this.core!.off_event(id);
+    };
   }
 
   /** 发送事件（载荷自动编码） */
@@ -263,28 +272,33 @@ export class EchoStream {
   // ======================== 双向 RPC（处理服务端主动调用） ========================
 
   /**
-   * 注册 RPC 处理器（响应自动编码）
+   * 注册 RPC 处理器（响应自动编码），返回取消注册函数
    * @param handler async (...args) => value；返回 undefined 时回错误响应
+   * @returns off：调用后不再响应服务端调用
    */
   onRpc<TArgs extends unknown[] = unknown[], TResp = unknown>(
     name: string,
     handler: (...args: TArgs) => TResp | Promise<TResp>,
-  ): void {
+  ): () => void {
     this._rpcHandlers.set(name, handler as (...args: unknown[]) => unknown);
-    this.core!.on_rpc(name, (_rpcName: string, data: Uint8Array, id: bigint) => {
+    const id = this.core!.on_rpc(name, (_rpcName: string, data: Uint8Array, rpcId: bigint) => {
       const h = this._rpcHandlers.get(name);
       if (!h) return null;
       try {
         const result = h(...spreadArgs(data));
         if (result === undefined) return null; // 无响应
         Promise.resolve(result)
-          .then((value) => this._sendResponse(id, value))
-          .catch((e) => this._sendError(id, e));
+          .then((value) => this._sendResponse(rpcId, value))
+          .catch((e) => this._sendError(rpcId, e));
         return null; // 统一走异步响应路径
       } catch (e) {
-        return this._errorFrame(id, e); // 同步异常：直接回错误帧
+        return this._errorFrame(rpcId, e); // 同步异常：直接回错误帧
       }
     });
+    return () => {
+      this._rpcHandlers.delete(name);
+      this.core!.off_rpc(id);
+    };
   }
 
   private _sendResponse(id: bigint, value: unknown): void {
@@ -325,16 +339,20 @@ export class EchoStream {
   }
 
   /**
-   * 注册入站流处理器（服务端推送；帧自动解码）
+   * 注册入站流处理器（服务端推送；帧自动解码），返回取消注册函数
    * @param handler async (stream) => void；stream.recv() 取下一帧，流结束返回 null
+   * @returns off：调用后不再接收该流
    */
-  onStream<T = unknown>(name: string, handler: (stream: InboundStream<T>) => void | Promise<void>): void {
+  onStream<T = unknown>(
+    name: string,
+    handler: (stream: InboundStream<T>) => void | Promise<void>,
+  ): () => void {
     if (this._streamHandlers.has(name)) {
       throw new Error("同名流处理器已注册: " + name);
     }
     const receiver = createStreamReceiver<T>();
     this._streamHandlers.set(name, receiver);
-    this.core!.on_stream(name, (frame: Uint8Array | null) => {
+    const id = this.core!.on_stream(name, (frame: Uint8Array | null) => {
       if (frame === null) {
         receiver.push(null);
       } else {
@@ -345,6 +363,11 @@ export class EchoStream {
     if (ret instanceof Promise) {
       ret.catch((e) => console.error("[echostream] 流处理器出错:", e));
     }
+    return () => {
+      this._streamHandlers.delete(name);
+      receiver.push(null); // 唤醒等待中的 recv()
+      this.core!.off_stream(id);
+    };
   }
 
   // ======================== 内部 ========================

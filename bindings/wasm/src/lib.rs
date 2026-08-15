@@ -519,9 +519,11 @@ impl ClientCoreHandle {
         encode_frame_bytes(&msg)
     }
 
-    /// 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null）
-    pub fn on_stream(&mut self, name: &str, callback: js_sys::Function) {
-        self.core
+    /// 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
+    /// 返回监听 id（off_stream 取消注册）
+    pub fn on_stream(&mut self, name: &str, callback: js_sys::Function) -> u32 {
+        let id = self
+            .core
             .on_stream(name, move |frame: Option<StreamMsg>| match frame {
                 Some(f) => {
                     let arr = Uint8Array::from(&f.data[..]);
@@ -531,24 +533,37 @@ impl ClientCoreHandle {
                     let _ = callback.call1(&JsValue::NULL, &JsValue::NULL);
                 }
             });
+        id as u32
     }
 
-    /// 注册事件监听（回调：name 与 data 两个参数）
-    pub fn on_event(&mut self, name: &str, callback: js_sys::Function) {
+    /// 取消注册流处理器（按 on_stream 返回的 id）
+    pub fn off_stream(&mut self, id: u32) -> bool {
+        self.core.off_stream(id as u64)
+    }
+
+    /// 注册事件监听（回调：name 与 data 两个参数），返回监听 id（off_event 取消注册）
+    pub fn on_event(&mut self, name: &str, callback: js_sys::Function) -> u32 {
         let name_js = JsValue::from_str(name);
-        self.core
+        let id = self
+            .core
             .on_event(name, move |_event_name: &str, data: Bytes| {
                 let arr = Uint8Array::from(&data[..]);
                 let _ = callback.call2(&JsValue::NULL, &name_js, &arr.into());
             });
+        id as u32
     }
 
-    /// 注册 RPC 处理器（处理对端主动调用）
+    /// 取消注册事件监听（按 on_event 返回的 id）
+    pub fn off_event(&mut self, id: u32) -> bool {
+        self.core.off_event(id as u64)
+    }
+
+    /// 注册 RPC 处理器（处理对端主动调用），返回监听 id（off_rpc 取消注册）
     /// 回调签名：(name: string, data: Uint8Array, id: number) => Uint8Array | null
     /// 返回 null 表示异步处理（稍后通过 build_response(id, payload) 补响应）
-    pub fn on_rpc(&mut self, name: &str, callback: js_sys::Function) {
+    pub fn on_rpc(&mut self, name: &str, callback: js_sys::Function) -> u32 {
         let name_js = JsValue::from_str(name);
-        self.core.on_rpc(name, move |id: u64, data: Bytes| {
+        let id = self.core.on_rpc(name, move |id: u64, data: Bytes| {
             let arr = Uint8Array::from(&data[..]);
             match callback.call3(
                 &JsValue::NULL,
@@ -566,6 +581,12 @@ impl ClientCoreHandle {
                 _ => None, // 异步处理：调用方稍后 build_response
             }
         });
+        id as u32
+    }
+
+    /// 取消注册 RPC 处理器（按 on_rpc 返回的 id）
+    pub fn off_rpc(&mut self, id: u32) -> bool {
+        self.core.off_rpc(id as u64)
     }
 
     /// 处理入站帧：返回需要写回对端的响应帧（对端主动调用且同步完成时）

@@ -78,24 +78,43 @@ impl JsClient {
         })
     }
 
-    /// 注册事件监听（回调收到事件载荷 Buffer）
+    /// 注册事件监听（回调收到事件载荷 Buffer），返回注册 token（off_event 取消注册）
     #[napi]
-    pub fn on_event(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
+    pub fn on_event(&self, name: String, callback: ThreadsafeFunction<Buffer>) -> u32 {
         self.client
-            .add_event_handler(JsEventCallback { name, callback });
+            .add_event_handler(JsEventCallback { name, callback }) as u32
     }
 
-    /// 注册 RPC 处理器（处理服务端主动调用；回调：payload Buffer -> Buffer / Promise<Buffer>）
+    /// 取消注册事件监听（按 on_event 返回的 token）
     #[napi]
-    pub fn on_rpc(&self, name: String, callback: ThreadsafeFunction<Buffer>) {
-        self.client.add_rpc_handler(JsRpcHandler { name, callback });
+    pub fn off_event(&self, token: u32) -> bool {
+        self.client.remove_event_handler(token as u64)
     }
 
-    /// 注册流处理器（服务端推送；回调：receiver 句柄）
+    /// 注册 RPC 处理器（处理服务端主动调用；回调：payload Buffer -> Buffer / Promise<Buffer>），
+    /// 返回注册 token（off_rpc 取消注册）
     #[napi]
-    pub fn on_stream(&self, name: String, callback: ThreadsafeFunction<JsStreamReceiver>) {
+    pub fn on_rpc(&self, name: String, callback: ThreadsafeFunction<Buffer>) -> u32 {
+        self.client.add_rpc_handler(JsRpcHandler { name, callback }) as u32
+    }
+
+    /// 取消注册 RPC 处理器（按 on_rpc 返回的 token）
+    #[napi]
+    pub fn off_rpc(&self, token: u32) -> bool {
+        self.client.remove_rpc_handler(token as u64)
+    }
+
+    /// 注册流处理器（服务端推送；回调：receiver 句柄），返回注册 token（off_stream 取消注册）
+    #[napi]
+    pub fn on_stream(&self, name: String, callback: ThreadsafeFunction<JsStreamReceiver>) -> u32 {
         self.client
-            .add_stream_handler(JsStreamHandler { name, callback });
+            .add_stream_handler(JsStreamHandler { name, callback }) as u32
+    }
+
+    /// 取消注册流处理器（按 on_stream 返回的 token）
+    #[napi]
+    pub fn off_stream(&self, token: u32) -> bool {
+        self.client.remove_stream_handler(token as u64)
     }
 
     /// 关闭连接

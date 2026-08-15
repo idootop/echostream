@@ -9,12 +9,15 @@ export interface NativeClient {
   emit(name: string, payload: Uint8Array): Promise<void>;
   emitUnreliable(name: string, payload: Uint8Array): Promise<void>;
   createStream(name: string): Promise<NativeStream>;
-  onEvent(name: string, callback: (err: Error | null, payload: Uint8Array) => void): void;
+  onEvent(name: string, callback: (err: Error | null, payload: Uint8Array) => void): number;
+  offEvent(token: number): boolean;
   onRpc(
     name: string,
     callback: (err: Error | null, payload: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): void;
-  onStream(name: string, callback: (err: Error | null, receiver: NativeStreamReceiver) => void): void;
+  ): number;
+  offRpc(token: number): boolean;
+  onStream(name: string, callback: (err: Error | null, receiver: NativeStreamReceiver) => void): number;
+  offStream(token: number): boolean;
   close(): void;
 }
 

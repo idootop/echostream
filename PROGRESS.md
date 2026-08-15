@@ -112,6 +112,10 @@
 - [x] **fmt/clippy 全量合规**（CI 同款检查）：修复 handler_forms/middleware_stack 等 11 个文件的
       rustfmt 差异；core router 复杂类型加 type alias（clippy::type-complexity）；router_test 清理
       未使用导入与冗余模式匹配；cargo fmt --check + workspace clippy -D warnings 全绿
+- [x] **批量注册 + 反注册补全**：Router/Builder/Server/Client 的 add_rpcs/add_events/add_streams 批量注册；
+      Server 运行时 add_* 返回 Token 并支持 remove_*；ClientCore 监听按 ListenerId 注册/移除
+      （on_event/off_event 等，单测覆盖）；WASM 绑定 off_event/off_rpc/off_stream（胶水重新生成）；
+      浏览器 SDK 与 Node/Python 包装的 onEvent/onRpc/onStream 返回取消注册函数
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

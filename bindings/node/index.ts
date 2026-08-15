@@ -104,33 +104,49 @@ export class Client {
     return new Stream(await this._n.createStream(name));
   }
 
-  /** 注册事件监听（载荷自动解码并展开；TArgs 为解码后的参数元组） */
-  onEvent<TArgs extends unknown[] = unknown[]>(name: string, handler: (...args: TArgs) => void): void {
-    this._n.onEvent(name, (err, payload) => {
+  /**
+   * 注册事件监听（载荷自动解码并展开；TArgs 为解码后的参数元组），返回取消注册函数
+   */
+  onEvent<TArgs extends unknown[] = unknown[]>(
+    name: string,
+    handler: (...args: TArgs) => void,
+  ): () => void {
+    const token = this._n.onEvent(name, (err, payload) => {
       if (err) throw err;
       handler(...(spreadArgs(payload) as TArgs));
     });
+    return () => {
+      this._n.offEvent(token);
+    };
   }
 
-  /** 注册 RPC 处理器（处理服务端主动调用；TResp 为响应类型） */
+  /**
+   * 注册 RPC 处理器（处理服务端主动调用；TResp 为响应类型），返回取消注册函数
+   */
   onRpc<TArgs extends unknown[] = unknown[], TResp = unknown>(
     name: string,
     handler: (...args: TArgs) => TResp | Promise<TResp>,
-  ): void {
-    this._n.onRpc(name, async (err, payload) => {
+  ): () => void {
+    const token = this._n.onRpc(name, async (err, payload) => {
       if (err) throw err;
       const result = await handler(...(spreadArgs(payload) as TArgs));
       if (result === undefined) throw new Error("RPC 处理器未返回响应");
       return encodePayload(result);
     });
+    return () => {
+      this._n.offRpc(token);
+    };
   }
 
-  /** 注册流处理器（服务端推送；帧自动解码） */
-  onStream(name: string, handler: (receiver: StreamReceiver) => void): void {
-    this._n.onStream(name, (err, receiver) => {
+  /** 注册流处理器（服务端推送；帧自动解码），返回取消注册函数 */
+  onStream(name: string, handler: (receiver: StreamReceiver) => void): () => void {
+    const token = this._n.onStream(name, (err, receiver) => {
       if (err) throw err;
       handler(new StreamReceiver(receiver));
     });
+    return () => {
+      this._n.offStream(token);
+    };
   }
 
   /** 主动关闭连接 */

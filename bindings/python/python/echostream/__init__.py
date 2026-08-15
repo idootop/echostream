@@ -101,19 +101,38 @@ class Client:
         return Stream(self._n.create_stream(name))
 
     def on_event(self, name, handler):
-        self._n.on_event(name, lambda data: handler(*_spread(data)))
+        """注册事件监听，返回取消注册函数（off）"""
+        token = self._n.on_event(name, lambda data: handler(*_spread(data)))
+
+        def off():
+            self._n.off_event(token)
+
+        return off
 
     def on_rpc(self, name, handler):
+        """注册 RPC 处理器（处理服务端主动调用），返回取消注册函数（off）"""
+
         def wrapped(data):
             result = handler(*_spread(data))
             if result is None:
                 raise ValueError("RPC 处理器未返回响应")
             return _encode_args(result, None)
 
-        self._n.add_rpc(name, wrapped)
+        token = self._n.add_rpc(name, wrapped)
+
+        def off():
+            self._n.off_rpc(token)
+
+        return off
 
     def on_stream(self, name, handler):
-        self._n.add_stream(name, lambda receiver: handler(StreamReceiver(receiver)))
+        """注册流处理器（服务端推送），返回取消注册函数（off）"""
+        token = self._n.add_stream(name, lambda receiver: handler(StreamReceiver(receiver)))
+
+        def off():
+            self._n.off_stream(token)
+
+        return off
 
     def close(self):
         self._n.close()

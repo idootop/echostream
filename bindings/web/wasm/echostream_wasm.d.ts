@@ -5,6 +5,10 @@ export class ClientCoreHandle {
   free(): void;
   [Symbol.dispose](): void;
   /**
+   * 取消注册流处理器（按 on_stream 返回的 id）
+   */
+  off_stream(id: number): boolean;
+  /**
    * 构造事件帧
    */
   build_event(name: string, payload: Uint8Array): Uint8Array;
@@ -41,24 +45,33 @@ export class ClientCoreHandle {
    */
   constructor();
   /**
-   * 注册 RPC 处理器（处理对端主动调用）
+   * 注册 RPC 处理器（处理对端主动调用），返回监听 id（off_rpc 取消注册）
    * 回调签名：(name: string, data: Uint8Array, id: number) => Uint8Array | null
    * 返回 null 表示异步处理（稍后通过 build_response(id, payload) 补响应）
    */
-  on_rpc(name: string, callback: Function): void;
+  on_rpc(name: string, callback: Function): number;
+  /**
+   * 取消注册 RPC 处理器（按 on_rpc 返回的 id）
+   */
+  off_rpc(id: number): boolean;
   /**
    * 发起 RPC：返回请求帧（长度前缀 + Message）
    * 响应到达时调用 resolve(data: Uint8Array, error: string | null)
    */
   request(name: string, payload: Uint8Array, resolve: Function): Uint8Array;
   /**
-   * 注册事件监听（回调：name 与 data 两个参数）
+   * 注册事件监听（回调：name 与 data 两个参数），返回监听 id（off_event 取消注册）
    */
-  on_event(name: string, callback: Function): void;
+  on_event(name: string, callback: Function): number;
   /**
-   * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null）
+   * 取消注册事件监听（按 on_event 返回的 id）
    */
-  on_stream(name: string, callback: Function): void;
+  off_event(id: number): boolean;
+  /**
+   * 注册入站流处理器（处理对端推送的流；回调：frame: Uint8Array | null），
+   * 返回监听 id（off_stream 取消注册）
+   */
+  on_stream(name: string, callback: Function): number;
 }
 
 /**
@@ -133,9 +146,12 @@ export interface InitOutput {
   readonly clientcorehandle_build_stream_frame: (a: number, b: number, c: bigint, d: number, e: number, f: number, g: number, h: bigint) => void;
   readonly clientcorehandle_handle_inbound: (a: number, b: number, c: number, d: number) => void;
   readonly clientcorehandle_new: () => number;
-  readonly clientcorehandle_on_event: (a: number, b: number, c: number, d: number) => void;
-  readonly clientcorehandle_on_rpc: (a: number, b: number, c: number, d: number) => void;
-  readonly clientcorehandle_on_stream: (a: number, b: number, c: number, d: number) => void;
+  readonly clientcorehandle_off_event: (a: number, b: number) => number;
+  readonly clientcorehandle_off_rpc: (a: number, b: number) => number;
+  readonly clientcorehandle_off_stream: (a: number, b: number) => number;
+  readonly clientcorehandle_on_event: (a: number, b: number, c: number, d: number) => number;
+  readonly clientcorehandle_on_rpc: (a: number, b: number, c: number, d: number) => number;
+  readonly clientcorehandle_on_stream: (a: number, b: number, c: number, d: number) => number;
   readonly clientcorehandle_open_stream: (a: number, b: number, c: number) => bigint;
   readonly clientcorehandle_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly decode_bytes: (a: number, b: number, c: number) => void;

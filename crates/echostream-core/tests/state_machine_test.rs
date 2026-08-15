@@ -219,6 +219,46 @@ fn datagram_event_is_self_describing() {
 }
 
 #[test]
+fn listeners_can_be_unregistered() {
+    let mut core = ClientCore::new();
+    let count = Arc::new(AtomicU64::new(0));
+
+    // 事件：同名多监听器，按 id 精确移除
+    let id1 = core.on_event("ev", {
+        let count = count.clone();
+        move |_n: &str, _d: Bytes| {
+            count.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    let id2 = core.on_event("ev", {
+        let count = count.clone();
+        move |_n: &str, _d: Bytes| {
+            count.fetch_add(10, Ordering::Relaxed);
+        }
+    });
+    core.handle_inbound(Message::Event(EventMsg {
+        id: 1,
+        name: "ev".into(),
+        data: Bytes::new(),
+    }));
+    assert_eq!(count.load(Ordering::Relaxed), 11);
+    assert!(core.off_event(id1), "移除已注册监听应成功");
+    assert!(!core.off_event(id1), "重复移除应失败");
+    core.handle_inbound(Message::Event(EventMsg {
+        id: 2,
+        name: "ev".into(),
+        data: Bytes::new(),
+    }));
+    assert_eq!(count.load(Ordering::Relaxed), 21, "仅剩余 id2 监听器");
+
+    // RPC / 流：按 id 移除
+    let rpc_id = core.on_rpc("ping", |_id, _d| None);
+    assert!(core.off_rpc(rpc_id));
+    let stream_id = core.on_stream("chat", |_f| {});
+    assert!(core.off_stream(stream_id));
+}
+
+#[test]
 fn stream_end_and_timestamp_helpers() {
     let core = ClientCore::new();
     let end = core.build_stream_end(42);

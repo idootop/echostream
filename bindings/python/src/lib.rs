@@ -100,22 +100,39 @@ impl Client {
         })
     }
 
-    /// 注册事件监听（回调签名：`handler(data: bytes) -> None`）
-    fn on_event(&self, name: &str, callback: Py<PyAny>) {
+    /// 注册事件监听（回调签名：`handler(data: bytes) -> None`），返回注册 token（off_event 取消注册）
+    fn on_event(&self, name: &str, callback: Py<PyAny>) -> u64 {
         self.client
-            .add_event_handler(PyEventHandler::new(name, callback));
+            .add_event_handler(PyEventHandler::new(name, callback))
     }
 
-    /// 注册 RPC 处理器（处理服务端主动调用，回调签名：`handler(data: bytes) -> bytes`）
-    fn add_rpc(&self, name: &str, callback: Py<PyAny>) {
-        self.client
-            .add_rpc_handler(PyRpcHandler::new(name, callback));
+    /// 取消注册事件监听（按 on_event 返回的 token）
+    fn off_event(&self, token: u64) -> bool {
+        self.client.remove_event_handler(token)
     }
 
-    /// 注册流处理器（服务端推送，回调签名：`handler(receiver)`，receiver.recv() 拉帧）
-    fn add_stream(&self, name: &str, callback: Py<PyAny>) {
+    /// 注册 RPC 处理器（处理服务端主动调用，回调签名：`handler(data: bytes) -> bytes`），
+    /// 返回注册 token（off_rpc 取消注册）
+    fn add_rpc(&self, name: &str, callback: Py<PyAny>) -> u64 {
         self.client
-            .add_stream_handler(PyStreamHandler::new(name, callback));
+            .add_rpc_handler(PyRpcHandler::new(name, callback))
+    }
+
+    /// 取消注册 RPC 处理器（按 add_rpc 返回的 token）
+    fn off_rpc(&self, token: u64) -> bool {
+        self.client.remove_rpc_handler(token)
+    }
+
+    /// 注册流处理器（服务端推送，回调签名：`handler(receiver)`，receiver.recv() 拉帧），
+    /// 返回注册 token（off_stream 取消注册）
+    fn add_stream(&self, name: &str, callback: Py<PyAny>) -> u64 {
+        self.client
+            .add_stream_handler(PyStreamHandler::new(name, callback))
+    }
+
+    /// 取消注册流处理器（按 add_stream 返回的 token）
+    fn off_stream(&self, token: u64) -> bool {
+        self.client.remove_stream_handler(token)
     }
 
     /// 关闭连接
