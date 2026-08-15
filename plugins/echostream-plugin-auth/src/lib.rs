@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use echostream_core::{Middleware, ServerBuilder, ServerPlugin, Session};
+use echostream_core::{Middleware, Next, ServerBuilder, ServerPlugin, Session};
 use echostream_proto::{Error, Message, Result};
 
 /// 认证事件名（客户端连接后发送）
@@ -92,20 +92,20 @@ impl Middleware for AuthMiddleware {
         "auth"
     }
 
-    async fn on_message(&self, session: &Session, msg: Message) -> Result<Option<Message>> {
+    async fn handle(&self, session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
         // 认证事件本身放行（token 校验在 handler）
         if matches!(&msg, Message::Event(e) if e.name == AUTH_EVENT) {
-            return Ok(Some(msg));
+            return next.run(msg).await;
         }
         // 已认证会话放行
         if session.get::<bool>(AUTH_KEY).is_some() {
-            return Ok(Some(msg));
+            return next.run(msg).await;
         }
         // 等待认证完成（认证事件与业务请求并发到达时的竞态防护：
         // 事件与 RPC 在不同任务处理，轮询状态保证认证先于业务生效）
         for _ in 0..10 {
             if session.get::<bool>(AUTH_KEY).is_some() {
-                return Ok(Some(msg));
+                return next.run(msg).await;
             }
             tokio::time::sleep(AUTH_WAIT / 10).await;
         }

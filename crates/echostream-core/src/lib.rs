@@ -49,7 +49,7 @@ pub use context::ServerContext;
 #[cfg(feature = "io")]
 pub use handler::{DynEventHandler, DynRpcHandler, EventHandler, RpcHandler, StreamHandler};
 #[cfg(feature = "io")]
-pub use middleware::Middleware;
+pub use middleware::{Middleware, Next};
 #[cfg(feature = "io")]
 pub use plugin::{ClientPlugin, ServerPlugin};
 #[cfg(feature = "io")]

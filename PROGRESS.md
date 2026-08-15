@@ -76,7 +76,9 @@
 - [x] **Step 3 流增强**：StreamReceiver::into_stream / into_stream_typed（futures::Stream 拉取模式，
       与组合子互通）；修复客户端流分发未 spawn 导致长流阻塞事件/主动 RPC 接收的 bug；
       流消费模式文档化（句柄拉取为主 / 回调推送为绑定侧原语）；单测覆盖（10 passed）
-- [ ] **Step 4 中间件洋葱重构**：Next 链（超时/错误处理可包裹下游）+ on_connect/on_disconnect hook
+- [x] **Step 4 中间件洋葱重构**：Middleware::handle(session, msg, next) 洋葱链（tower/axum 同款），
+      终端在链内执行（handler 错误可被中间件捕获/归一化）；新增 on_connect/on_disconnect 生命周期钩子
+      （Server 每会话触发、Client 主连接触发）；logging/auth 中间件与示例全部迁移
 - [ ] **Step 5 Router 运行时管理**：事件/流/中间件按 token 移除、注册表查询；Server 暴露 router 与运行时钩子
 - [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）
 - [ ] **Step 7 新插件**：metrics / heartbeat（规划落地）

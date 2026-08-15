@@ -52,14 +52,14 @@ impl Middleware for LogMiddleware {
         "log"
     }
 
-    async fn on_message(&self, session: &Session, msg: Message) -> Result<Option<Message>> {
+    async fn handle(&self, session: &Session, msg: Message, next: Next) -> Result<Option<Message>> {
         let kind = match &msg {
             Message::Request(_) => "RPC 请求",
             Message::Event(_) => "事件",
             _ => "其他",
         };
         println!("[middleware] 拦截到{kind} <- session {}", session.id());
-        Ok(Some(msg))
+        next.run(msg).await
     }
 }
 

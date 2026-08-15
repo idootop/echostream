@@ -178,9 +178,14 @@ async fn middleware_blocks_unauthenticated() {
         fn name(&self) -> &str {
             "allow-add"
         }
-        async fn on_message(&self, _s: &Session, msg: Message) -> Result<Option<Message>> {
+        async fn handle(
+            &self,
+            _s: &Session,
+            msg: Message,
+            next: echostream_core::Next,
+        ) -> Result<Option<Message>> {
             if matches!(&msg, Message::Request(r) if r.name == "add") {
-                Ok(Some(msg))
+                next.run(msg).await
             } else {
                 Ok(None)
             }

@@ -52,6 +52,8 @@ impl Server {
                                 session.peer_addr(),
                                 session.id()
                             );
+                            // 中间件连接钩子
+                            self.router.run_connect_hooks(&session).await;
                             let s = session.clone();
                             for hook in &self.on_connect {
                                 hook(&s);
@@ -181,6 +183,8 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
             }
         }
     }
+    // 中间件断开钩子（在用户钩子之前，保证插件观测先于业务通知）
+    router.run_disconnect_hooks(&session).await;
     ctx.unregister_session(session.id());
     tracing::debug!("客户端断开: session {}", session.id());
 }

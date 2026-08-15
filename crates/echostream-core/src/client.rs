@@ -103,7 +103,6 @@ impl Client {
         }
         self.inner.connected.store(true, Ordering::Relaxed);
         tokio::spawn(receive_loop(self.clone(), new_session, true));
-        self.notify_connect();
     }
 
     // ==================== 生命周期回调（可取消注册） ====================
@@ -412,7 +411,6 @@ impl ClientBuilder {
             // 主连接（sessions[0]）驱动生命周期；池中辅助连接断开仅静默移除
             tokio::spawn(receive_loop(client.clone(), session, i == 0));
         }
-        client.notify_connect();
         client
     }
 
@@ -428,6 +426,11 @@ impl ClientBuilder {
 /// 连接池辅助连接断开时仅从池中移除，不触发断开回调。
 async fn receive_loop(client: Client, session: Session, primary: bool) {
     let conn = session.conn_arc();
+    // 主连接：连接建立回调（用户 + 中间件）
+    if primary {
+        client.notify_connect();
+        client.inner.router.run_connect_hooks(&session).await;
+    }
     // 数据报接收任务（不可靠事件通道）
     if conn.supports_datagram() {
         let c = client.clone();
@@ -510,6 +513,7 @@ async fn receive_loop(client: Client, session: Session, primary: bool) {
     tracing::debug!("连接已断开 (session {})", session.id());
     if primary {
         client.inner.connected.store(false, Ordering::Relaxed);
+        client.inner.router.run_disconnect_hooks(&session).await;
         client.notify_disconnect();
     } else if !client.is_closed() {
         // 连接池辅助连接断开：静默移除，不触发生命周期回调
