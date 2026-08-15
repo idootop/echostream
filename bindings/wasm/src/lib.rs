@@ -397,6 +397,8 @@ fn get_metadata(obj: &js_sys::Object) -> Result<Vec<StreamMetaEntry>, JsValue> {
             Reflect::get(obj, &key).map_err(|e| js_err(&format!("metadata 值读取失败: {e:?}")))?;
         let value = if let Some(s) = val.as_string() {
             Bytes::from(s.into_bytes())
+        } else if let Some(b) = val.as_bool() {
+            Bytes::from(if b { "true" } else { "false" }.to_string().into_bytes())
         } else if let Some(arr) = val.dyn_ref::<Uint8Array>() {
             Bytes::from(arr.to_vec())
         } else if val.as_f64().is_some() {
@@ -408,7 +410,7 @@ fn get_metadata(obj: &js_sys::Object) -> Result<Vec<StreamMetaEntry>, JsValue> {
                 .unwrap_or_default();
             Bytes::from(s.into_bytes())
         } else {
-            return Err(js_err("metadata 值必须是字符串 / 数字 / Uint8Array"));
+            return Err(js_err("metadata 值必须是字符串 / 数字 / 布尔 / Uint8Array"));
         };
         out.push(StreamMetaEntry {
             key: key_str,
@@ -422,7 +424,12 @@ fn metadata_to_js(meta: &[StreamMetaEntry]) -> JsValue {
     let obj = js_sys::Object::new();
     for m in meta {
         let val = match String::from_utf8(m.value.to_vec()) {
-            Ok(s) => JsValue::from(s),
+            Ok(s) => match s.as_str() {
+                // 布尔值（StreamMetaEntry::bool / JS boolean 传入）还原为 JS 布尔
+                "true" => JsValue::from(true),
+                "false" => JsValue::from(false),
+                _ => JsValue::from(s),
+            },
             Err(_) => Uint8Array::from(&m.value[..]).into(),
         };
         Reflect::set(&obj, &m.key.clone().into(), &val).unwrap();

@@ -75,8 +75,8 @@ export interface StreamEndInfo {
   message: string | null;
 }
 
-/** 流元数据（键值；字符串 / 数字 / 字节） */
-export type StreamMetadata = Record<string, string | number | Uint8Array>;
+/** 流元数据（键值；字符串 / 数字 / 布尔 / 字节） */
+export type StreamMetadata = Record<string, string | number | boolean | Uint8Array>;
 
 /** 入站流接收器（帧自动解码；流结束返回 null） */
 export interface InboundStream<T = unknown> {

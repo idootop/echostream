@@ -49,6 +49,18 @@ impl StreamMetaEntry {
         }
     }
 
+    /// 布尔值元数据（存储为 "true" / "false"，跨端一致；`get_metadata_bool` 快速解析）
+    pub fn bool(key: impl Into<String>, value: bool) -> Self {
+        Self {
+            key: key.into(),
+            value: Bytes::from(
+                if value { "true" } else { "false" }
+                    .to_string()
+                    .into_bytes(),
+            ),
+        }
+    }
+
     /// 原始字节值元数据
     pub fn bytes(key: impl Into<String>, value: Bytes) -> Self {
         Self {

@@ -260,6 +260,15 @@ impl StreamReceiver {
             .map(|m| &m.value)
     }
 
+    /// 按键查询流元数据（布尔值；识别 "true"/"1" 与 "false"/"0"）
+    pub fn get_metadata_bool(&self, key: &str) -> Option<bool> {
+        self.get_metadata(key).and_then(|s| match s.as_str() {
+            "true" | "1" => Some(true),
+            "false" | "0" => Some(false),
+            _ => None,
+        })
+    }
+
     /// 结束码（流结束后有效；0 = 正常结束，非 0 = 异常 / 取消 / 业务终止）
     pub fn end_code(&self) -> u16 {
         self.end_code
@@ -341,6 +350,35 @@ mod tests {
             },
             vec![],
         )
+    }
+
+    #[test]
+    fn metadata_bool_parses_true_false() {
+        let meta = vec![
+            StreamMetaEntry::bool("live", true),
+            StreamMetaEntry::bool("recorded", false),
+            StreamMetaEntry::str("codec", "h264"),
+            StreamMetaEntry::num("width", 1920),
+        ];
+        let recv = StreamReceiver::new(
+            Box::new(FakeIo::new(vec![])),
+            StreamMsg {
+                id: 1,
+                seq: 0,
+                sender_ts: Timestamp(0),
+                data: Bytes::new(),
+            },
+            meta,
+        );
+        assert_eq!(recv.get_metadata_bool("live"), Some(true));
+        assert_eq!(recv.get_metadata_bool("recorded"), Some(false));
+        // 字符串 / 数字 / 缺失键：None（非布尔值不误判）
+        assert_eq!(recv.get_metadata_bool("codec"), None);
+        assert_eq!(recv.get_metadata_bool("width"), None);
+        assert_eq!(recv.get_metadata_bool("missing"), None);
+        // 字符串形态与 bytes 形态一致
+        assert_eq!(recv.get_metadata("live").as_deref(), Some("true"));
+        assert_eq!(recv.get_metadata("recorded").as_deref(), Some("false"));
     }
 
     #[tokio::test]
