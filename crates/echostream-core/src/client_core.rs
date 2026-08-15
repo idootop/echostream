@@ -11,7 +11,8 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 use echostream_proto::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMsg, Timestamp,
+    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamEndMsg, StreamMetaEntry,
+    StreamMsg, StreamOpenMsg, Timestamp,
 };
 
 /// 监听注册 id（on_* 返回，供 off_* 精确取消注册）
@@ -39,7 +40,9 @@ pub struct ClientCore {
     events: HashMap<String, Vec<(ListenerId, EventListener)>>,
     rpcs: HashMap<String, (ListenerId, RpcListener)>,
     streams: HashMap<String, (ListenerId, StreamListener)>,
-    stream_names: HashMap<u64, String>, // 流 id -> 名称（StreamEnd 按 id 路由）
+    stream_names: HashMap<u64, String>, // 流 id -> 名称（StreamOpen 记录，数据帧按 id 路由）
+    stream_metas: HashMap<u64, Vec<StreamMetaEntry>>, // 流 id -> 元数据（StreamOpen 记录）
+    stream_ends: HashMap<u64, StreamEndMsg>, // 流 id -> 结束信息（StreamEnd 记录，供查询）
     stream_seq: HashMap<u64, u64>,      // 流 id -> 下一帧序号
 }
 
@@ -90,36 +93,57 @@ impl ClientCore {
         })
     }
 
-    /// 打开流：分配流 id（后续帧用 build_stream_frame 发送）
+    /// 打开流：分配流 id（后续用 build_stream_open / build_stream_frame 发送）
     pub fn open_stream(&mut self, _name: &str) -> u64 {
         let id = self.next_id();
         self.stream_seq.insert(id, 0);
         id
     }
 
+    /// 构造流开始帧（流协商：名称 + 元数据；流首帧必须为此帧）
+    pub fn build_stream_open(
+        &mut self,
+        id: u64,
+        name: &str,
+        metadata: Vec<StreamMetaEntry>,
+    ) -> Message {
+        Message::StreamOpen(StreamOpenMsg {
+            id,
+            name: name.to_string(),
+            metadata,
+        })
+    }
+
     /// 构造流数据帧（自动递增序号；时间戳由调用方提供，WASM 环境无系统时钟）
     pub fn build_stream_frame(
         &mut self,
         id: u64,
-        name: &str,
         data: Bytes,
         sender_ts: u64,
+        flags: u8,
+        rtp_ts: u64,
     ) -> Message {
         let seq = self.stream_seq.entry(id).or_insert(0);
         let frame = Message::Stream(StreamMsg {
             id,
-            name: name.to_string(),
             seq: *seq,
+            flags,
             sender_ts: Timestamp(sender_ts),
+            rtp_ts,
             data,
         });
         *seq += 1;
         frame
     }
 
-    /// 构造流结束标记（WebSocket 传输的流关闭）
-    pub fn build_stream_end(&self, id: u64) -> Message {
-        Message::StreamEnd(StreamEndMsg { id })
+    /// 构造流结束帧（WebSocket 传输的流关闭；code=0 正常，非 0 异常/取消）
+    pub fn build_stream_end(&self, id: u64, code: u16, message: Option<String>) -> Message {
+        Message::StreamEnd(StreamEndMsg {
+            id,
+            code,
+            message,
+            metadata: Vec::new(),
+        })
     }
 
     /// 构造响应帧（供对端主动调用的异步回复）
@@ -253,14 +277,23 @@ impl ClientCore {
                     Some(self.build_error_response(req.id, "handler not found"))
                 }
             }
+            Message::StreamOpen(open) => {
+                // 流开始：记录名称与元数据（数据帧按 id 路由）
+                self.stream_names.insert(open.id, open.name.clone());
+                self.stream_metas.insert(open.id, open.metadata);
+                None
+            }
             Message::Stream(frame) => {
-                self.stream_names.insert(frame.id, frame.name.clone());
-                if let Some((_, handler)) = self.streams.get(&frame.name) {
+                // 按流 id 路由（名称仅在 StreamOpen 携带）
+                if let Some(name) = self.stream_names.get(&frame.id).cloned()
+                    && let Some((_, handler)) = self.streams.get(&name)
+                {
                     handler(Some(frame));
                 }
                 None
             }
             Message::StreamEnd(end) => {
+                self.stream_ends.insert(end.id, end.clone());
                 if let Some(name) = self.stream_names.get(&end.id).cloned()
                     && let Some((_, handler)) = self.streams.get(&name)
                 {
@@ -269,6 +302,24 @@ impl ClientCore {
                 None
             }
         }
+    }
+
+    /// 查询流的元数据（StreamOpen 记录；音视频参数 / 文件信息等）
+    pub fn stream_metadata(&self, id: u64) -> Option<&[StreamMetaEntry]> {
+        self.stream_metas.get(&id).map(|m| m.as_slice())
+    }
+
+    /// 查询流的结束信息（StreamEnd 记录；无记录表示未结束或流已清理）
+    pub fn stream_end(&self, id: u64) -> Option<&StreamEndMsg> {
+        self.stream_ends.get(&id)
+    }
+
+    /// 清理已结束流的内部状态（供调用方在流结束后调用，避免元数据累积）
+    pub fn remove_stream_state(&mut self, id: u64) {
+        self.stream_names.remove(&id);
+        self.stream_metas.remove(&id);
+        self.stream_ends.remove(&id);
+        self.stream_seq.remove(&id);
     }
 
     fn next_id(&mut self) -> u64 {

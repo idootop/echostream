@@ -260,8 +260,8 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
                                     // 读尽剩余帧，避免 drop 未读完的接收流触发对端写错误
                                     while let Ok(Some(_)) = stream.read_message().await {}
                                 }
-                                Ok(Some(Message::Stream(frame))) => {
-                                    r.dispatch_stream(&s, stream, frame).await;
+                                Ok(Some(Message::StreamOpen(open))) => {
+                                    r.dispatch_stream(&s, stream, open).await;
                                 }
                                 Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
                                 Ok(None) | Err(_) => {}
@@ -294,8 +294,8 @@ async fn handle_connection(session: Session, router: Arc<Router>, ctx: Arc<Serve
                                 }
                             });
                         }
-                        Ok(Some(Message::Stream(frame))) => {
-                            router.dispatch_stream(&session, recv, frame).await;
+                        Ok(Some(Message::StreamOpen(open))) => {
+                            router.dispatch_stream(&session, recv, open).await;
                         }
                         Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
                         Ok(None) | Err(_) => break,

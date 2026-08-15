@@ -116,6 +116,12 @@
       Server 运行时 add_* 返回 Token 并支持 remove_*；ClientCore 监听按 ListenerId 注册/移除
       （on_event/off_event 等，单测覆盖）；WASM 绑定 off_event/off_rpc/off_stream（胶水重新生成）；
       浏览器 SDK 与 Node/Python 包装的 onEvent/onRpc/onStream 返回取消注册函数
+- [x] **流协议重设计（C1+C2）**：三帧协议 StreamOpen(metadata 协商) / StreamMsg(flags+rtp_ts，去 name 按 id 路由)
+      / StreamEnd(code+message+trailers)；StreamSender 支持 send_key/send_rtp/finish_with；
+      StreamReceiver 提供 metadata/get_metadata/end_code/end_message/end_metadata；
+      Session/Client create_stream_with_metadata；Router dispatch 走 StreamOpen 链（中间件可看元数据拦截）；
+      ClientCore 记录流元数据/结束信息（stream_metadata/stream_end 查询 + remove_stream_state 清理）；
+      35 测试全绿（含 StreamOpen 元数据路由、结束码记录单测）
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

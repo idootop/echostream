@@ -28,7 +28,8 @@ impl Middleware for LoggingMiddleware {
         let (kind, name) = match &msg {
             Message::Request(r) => ("rpc", r.name.clone()),
             Message::Event(e) => ("event", e.name.clone()),
-            Message::Stream(s) => ("stream", s.name.clone()),
+            Message::StreamOpen(o) => ("stream_open", format!("id={} {}", o.id, o.name)),
+            Message::Stream(s) => ("stream", format!("id={}", s.id)),
             Message::Response(r) => ("response", format!("id={}", r.id)),
             Message::StreamEnd(e) => ("stream_end", format!("id={}", e.id)),
         };

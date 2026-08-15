@@ -9,7 +9,9 @@ use tokio::sync::oneshot;
 
 use bytes::Bytes;
 use echostream_proto::endpoint::{Endpoint, FrameIo};
-use echostream_proto::{Error, EventMsg, Message, RPC_CHANNEL_NAME, RequestMsg, Result};
+use echostream_proto::{
+    Error, EventMsg, Message, RPC_CHANNEL_NAME, RequestMsg, Result, StreamMetaEntry,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::codec;
@@ -365,11 +367,23 @@ impl Session {
         self.inner.conn.send_datagram(Bytes::from(data))
     }
 
-    /// 创建流（推送连续数据）
+    /// 创建流（推送连续数据；首帧自动携带 StreamOpen，无元数据）
     pub async fn create_stream(&self, name: &str) -> Result<StreamSender> {
+        self.create_stream_with_metadata(name, Vec::new()).await
+    }
+
+    /// 创建流并携带流元数据（音视频参数 / 文件信息 / 自定义扩展）
+    ///
+    /// 元数据随 StreamOpen 首帧发送，接收方通过 `StreamReceiver::metadata()` /
+    /// `get_metadata(key)` 读取。
+    pub async fn create_stream_with_metadata(
+        &self,
+        name: &str,
+        metadata: Vec<StreamMetaEntry>,
+    ) -> Result<StreamSender> {
         let send = self.inner.conn.open_uni().await?;
         let id = self.inner.next_msg_id.fetch_add(1, Ordering::Relaxed);
-        Ok(StreamSender::new(send, id, name.to_string()))
+        Ok(StreamSender::new(send, id, name.to_string(), metadata))
     }
 
     /// 关闭连接

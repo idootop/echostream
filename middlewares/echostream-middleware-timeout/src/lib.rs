@@ -57,6 +57,7 @@ impl Middleware for TimeoutMiddleware {
                 let id = match &msg {
                     Message::Request(r) => r.id,
                     Message::Event(e) => e.id,
+                    Message::StreamOpen(o) => o.id,
                     Message::Stream(s) => s.id,
                     Message::Response(r) => r.id,
                     Message::StreamEnd(e) => e.id,

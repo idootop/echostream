@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bytes::Bytes;
 use echostream_core::ClientCore;
 use echostream_proto::{
-    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg, Timestamp,
+    EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMetaEntry, StreamMsg, Timestamp,
 };
 
 #[test]
@@ -185,8 +185,8 @@ fn async_rpc_handler_defers_response() {
 fn stream_seq_increments_per_stream() {
     let mut core = ClientCore::new();
     let id = core.open_stream("chat");
-    let f1 = core.build_stream_frame(id, "chat", Bytes::from(vec![1]), 0);
-    let f2 = core.build_stream_frame(id, "chat", Bytes::from(vec![2]), 0);
+    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0, 0, 0);
+    let f2 = core.build_stream_frame(id, Bytes::from(vec![2]), 0, 0, 0);
     match (f1, f2) {
         (Message::Stream(a), Message::Stream(b)) => {
             assert_eq!(a.seq, 0);
@@ -196,11 +196,70 @@ fn stream_seq_increments_per_stream() {
     }
     // 另一条流序号独立
     let id2 = core.open_stream("chat");
-    let f3 = core.build_stream_frame(id2, "chat", Bytes::from(vec![3]), 0);
+    let f3 = core.build_stream_frame(id2, Bytes::from(vec![3]), 0, 0, 0);
     match f3 {
         Message::Stream(s) => assert_eq!(s.seq, 0),
         _ => panic!("期望 Stream 帧"),
     }
+}
+
+#[test]
+fn stream_open_carries_metadata_and_routes_by_id() {
+    let mut core = ClientCore::new();
+    let got = Arc::new(std::sync::Mutex::new(Vec::new()));
+    core.on_stream("video", {
+        let got = got.clone();
+        move |frame: Option<StreamMsg>| match frame {
+            Some(f) => got.lock().unwrap().push(format!("frame:{}", f.seq)),
+            None => got.lock().unwrap().push("end".to_string()),
+        }
+    });
+
+    // 流开始帧：名称 + 元数据
+    let id = core.open_stream("video");
+    let open = core.build_stream_open(
+        id,
+        "video",
+        vec![
+            StreamMetaEntry::str("codec", "h264"),
+            StreamMetaEntry::num("width", 1920),
+            StreamMetaEntry::num("height", 1080),
+        ],
+    );
+    match &open {
+        Message::StreamOpen(o) => {
+            assert_eq!(o.name, "video");
+            assert_eq!(o.metadata.len(), 3);
+        }
+        other => panic!("期望 StreamOpen，得到 {other:?}"),
+    }
+    core.handle_inbound(open);
+
+    // 数据帧（无 name）按 id 路由
+    let f1 = core.build_stream_frame(id, Bytes::from(vec![1]), 0, 0, 44100);
+    match &f1 {
+        Message::Stream(s) => assert_eq!(s.rtp_ts, 44100),
+        other => panic!("期望 Stream，得到 {other:?}"),
+    }
+    core.handle_inbound(f1);
+
+    // 元数据查询
+    let meta = core.stream_metadata(id).unwrap();
+    assert_eq!(meta[0].key, "codec");
+    assert_eq!(core.stream_metadata(id).unwrap()[1].key, "width");
+
+    // 结束帧：记录结束信息
+    core.handle_inbound(core.build_stream_end(id, 7, Some("cancelled".to_string())));
+    let end = core.stream_end(id).unwrap();
+    assert_eq!(end.code, 7);
+    assert_eq!(end.message.as_deref(), Some("cancelled"));
+
+    let frames = got.lock().unwrap().clone();
+    assert_eq!(frames, vec!["frame:0".to_string(), "end".to_string()]);
+
+    // 清理状态
+    core.remove_stream_state(id);
+    assert!(core.stream_metadata(id).is_none());
 }
 
 #[test]
@@ -230,7 +289,7 @@ fn listeners_can_be_unregistered() {
             count.fetch_add(1, Ordering::Relaxed);
         }
     });
-    let id2 = core.on_event("ev", {
+    let _id2 = core.on_event("ev", {
         let count = count.clone();
         move |_n: &str, _d: Bytes| {
             count.fetch_add(10, Ordering::Relaxed);
@@ -261,18 +320,30 @@ fn listeners_can_be_unregistered() {
 #[test]
 fn stream_end_and_timestamp_helpers() {
     let core = ClientCore::new();
-    let end = core.build_stream_end(42);
+    let end = core.build_stream_end(42, 0, None);
     match end {
-        Message::StreamEnd(e) => assert_eq!(e.id, 42),
+        Message::StreamEnd(e) => {
+            assert_eq!(e.id, 42);
+            assert_eq!(e.code, 0);
+        }
+        other => panic!("期望 StreamEnd，得到 {other:?}"),
+    }
+    let end_err = core.build_stream_end(43, 7, Some("boom".to_string()));
+    match end_err {
+        Message::StreamEnd(e) => {
+            assert_eq!(e.code, 7);
+            assert_eq!(e.message.as_deref(), Some("boom"));
+        }
         other => panic!("期望 StreamEnd，得到 {other:?}"),
     }
     let ts = Timestamp::now();
     assert!(ts.as_millis() > 0);
     let _ = StreamMsg {
         id: 0,
-        name: String::new(),
         seq: 0,
+        flags: 0,
         sender_ts: ts,
+        rtp_ts: 0,
         data: Bytes::new(),
     };
 }

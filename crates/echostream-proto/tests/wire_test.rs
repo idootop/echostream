@@ -73,14 +73,28 @@ async fn message_roundtrip_all_variants() {
             name: "hello".into(),
             data: Bytes::from(b"world".to_vec()),
         }),
-        Message::Stream(StreamMsg {
+        Message::StreamOpen(echostream_proto::StreamOpenMsg {
             id: 3,
             name: "chat".into(),
+            metadata: vec![
+                echostream_proto::StreamMetaEntry::str("codec", "h264"),
+                echostream_proto::StreamMetaEntry::num("width", 1920),
+            ],
+        }),
+        Message::Stream(StreamMsg {
+            id: 3,
             seq: 0,
+            flags: 0,
             sender_ts: Timestamp(123456),
+            rtp_ts: 0,
             data: Bytes::from(vec![0u8; 4096]),
         }),
-        Message::StreamEnd(StreamEndMsg { id: 3 }),
+        Message::StreamEnd(StreamEndMsg {
+            id: 3,
+            code: 0,
+            message: None,
+            metadata: vec![echostream_proto::StreamMetaEntry::num("frames", 42)],
+        }),
     ];
     for msg in messages {
         assert_eq!(roundtrip(&msg).await, msg, "往返不一致: {msg:?}");
@@ -101,7 +115,12 @@ async fn frame_boundary_multiple_messages() {
             name: "b".into(),
             data: Bytes::from(vec![7; 1000]),
         }),
-        Message::StreamEnd(StreamEndMsg { id: 9 }),
+        Message::StreamEnd(StreamEndMsg {
+            id: 9,
+            code: 0,
+            message: None,
+            metadata: Vec::new(),
+        }),
     ];
     let mut buf = Vec::new();
     for m in &msgs {

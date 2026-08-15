@@ -10,7 +10,9 @@ use std::sync::{Arc, RwLock};
 
 use bytes::Bytes;
 use echostream_proto::endpoint::FrameIo;
-use echostream_proto::{Error, EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamMsg};
+use echostream_proto::{
+    Error, EventMsg, Message, RequestMsg, ResponseMsg, StatusCode, StreamOpenMsg,
+};
 use futures::future::BoxFuture;
 
 use crate::handler::{DynEventHandler, DynRpcHandler, StreamHandler};
@@ -392,10 +394,39 @@ impl Router {
         }
     }
 
-    /// 分派流（中间件链后持续读取直到结束）
-    pub async fn dispatch_stream(&self, session: &Session, recv: Box<dyn FrameIo>, msg: StreamMsg) {
+    /// 分派流（StreamOpen 首帧已读；读取首个数据帧后进入中间件链与处理器）
+    ///
+    /// 中间件链收到 `Message::StreamOpen`（含流名与元数据，可据此拦截 / 改写）；
+    /// 终端构造带元数据的 StreamReceiver 并交给流处理器消费至结束。
+    pub async fn dispatch_stream(
+        &self,
+        session: &Session,
+        mut recv: Box<dyn FrameIo>,
+        open: StreamOpenMsg,
+    ) {
         let this = self.clone();
         let session2 = session.clone();
+        let stream_name = open.name.clone();
+        // 读取首个数据帧（流可能无数据直接结束）
+        let first = match recv.read_message().await {
+            Ok(Some(Message::Stream(frame))) if frame.id == open.id => frame,
+            Ok(Some(Message::StreamEnd(end))) if end.id == open.id => {
+                tracing::debug!("流 {stream_name} 无数据帧直接结束");
+                return;
+            }
+            Ok(Some(_)) => {
+                tracing::debug!("流 {stream_name} 首数据帧异常");
+                return;
+            }
+            Ok(None) => {
+                tracing::debug!("流 {stream_name} 提前关闭");
+                return;
+            }
+            Err(e) => {
+                tracing::debug!("流 {stream_name} 读取失败: {e}");
+                return;
+            }
+        };
         // 接收器由终端独占消费（中间件至多调用一次 next；Arc 共享避免借用逃逸）
         let recv: Arc<std::sync::Mutex<Option<Box<dyn FrameIo>>>> =
             Arc::new(std::sync::Mutex::new(Some(recv)));
@@ -403,11 +434,12 @@ impl Router {
             let this = this.clone();
             let session = session2.clone();
             let recv = recv.clone();
+            let first = first.clone();
             Box::pin(async move {
-                let Message::Stream(frame) = stream_msg else {
+                let Message::StreamOpen(open) = stream_msg else {
                     return Ok(Some(stream_msg));
                 };
-                let name = frame.name.clone();
+                let name = open.name.clone();
                 let Some(recv) = recv.lock().unwrap().take() else {
                     return Err(Error::Protocol("流处理器被重复调用".into()));
                 };
@@ -420,23 +452,23 @@ impl Router {
                     .map(|(_, h)| h.clone());
                 match handler {
                     Some(handler) => {
-                        let receiver = StreamReceiver::new(recv, frame.clone());
+                        let receiver = StreamReceiver::new(recv, first, open.metadata.clone())
+                            .with_name(name.clone());
                         handler.handle(&session, receiver).await?;
-                        Ok(Some(Message::Stream(frame))) // 已消费（回传首帧供中间件观测）
+                        Ok(Some(Message::StreamOpen(open))) // 已消费（回传 open 供中间件观测）
                     }
                     None => {
                         tracing::debug!("未找到流处理器: {name}");
-                        Ok(Some(Message::Stream(frame)))
+                        Ok(Some(Message::StreamOpen(open)))
                     }
                 }
             })
         });
-        let stream_name = msg.name.clone();
         match self
-            .run_chain(session, Message::Stream(msg), terminal)
+            .run_chain(session, Message::StreamOpen(open), terminal)
             .await
         {
-            Ok(Some(Message::Stream(_))) => {} // 已处理（或被未调用 next 的中间件短路）
+            Ok(Some(Message::StreamOpen(_))) => {} // 已处理（或被未调用 next 的中间件短路）
             Ok(None) => tracing::debug!("流被中间件拦截: {stream_name}"),
             Ok(Some(m)) => tracing::debug!("流中间件链未消费消息: {m:?}"),
             Err(e) => tracing::debug!("流中间件链出错: {e}"),

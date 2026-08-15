@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use echostream_proto::Message;
+use echostream_proto::StreamMetaEntry;
 use echostream_proto::endpoint::Endpoint;
 
 use crate::context::ServerContext;
@@ -191,6 +192,17 @@ impl Client {
     /// 创建流（推送连续数据；主连接）
     pub async fn create_stream(&self, name: &str) -> echostream_proto::Result<StreamSender> {
         self.session().create_stream(name).await
+    }
+
+    /// 创建流并携带流元数据（音视频参数 / 文件信息 / 自定义扩展；主连接）
+    pub async fn create_stream_with_metadata(
+        &self,
+        name: &str,
+        metadata: Vec<StreamMetaEntry>,
+    ) -> echostream_proto::Result<StreamSender> {
+        self.session()
+            .create_stream_with_metadata(name, metadata)
+            .await
     }
 
     /// 发送不可靠事件（数据报通道）
@@ -549,8 +561,8 @@ async fn receive_loop(client: Client, session: Session, primary: bool) {
                                     c.inner.router.dispatch_rpc(&s, &mut *stream, req).await;
                                     let _ = stream.finish().await;
                                 }
-                                Ok(Some(Message::Stream(frame))) => {
-                                    c.inner.router.dispatch_stream(&s, stream, frame).await;
+                                Ok(Some(Message::StreamOpen(open))) => {
+                                    c.inner.router.dispatch_stream(&s, stream, open).await;
                                 }
                                 Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }
                                 Ok(None) | Err(_) => {}
@@ -566,13 +578,13 @@ async fn receive_loop(client: Client, session: Session, primary: bool) {
                         Ok(Some(Message::Event(event))) => {
                             client.inner.router.dispatch_event(&session, event).await;
                         }
-                        Ok(Some(Message::Stream(frame))) => {
+                        Ok(Some(Message::StreamOpen(open))) => {
                             // spawn 处理：长生命周期流（持续推送）不得阻塞接收循环，
                             // 否则事件 / 服务端主动 RPC 会被饿死
                             let c = client.clone();
                             let s = session.clone();
                             tokio::spawn(async move {
-                                c.inner.router.dispatch_stream(&s, recv, frame).await;
+                                c.inner.router.dispatch_stream(&s, recv, open).await;
                             });
                         }
                         Ok(Some(_)) => { /* 忽略不支持的帧类型 */ }

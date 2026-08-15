@@ -15,17 +15,102 @@ pub enum Message {
     Response(ResponseMsg),
     /// 单向事件
     Event(EventMsg),
-    /// 流数据
+    /// 流开始帧：流协商（名称 + 元数据；必须为流首帧）
+    StreamOpen(StreamOpenMsg),
+    /// 流数据帧
     Stream(StreamMsg),
-    /// 流结束标记（WebSocket 等无流关闭语义的传输上使用）
+    /// 流结束帧（结束码 + 原因 + 结束元数据；必须为流末帧）
     StreamEnd(StreamEndMsg),
 }
 
-/// 流结束标记
+/// 流元数据项（键值对；值可为任意字节，字符串值直接 UTF-8 编码）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamMetaEntry {
+    /// 元数据键（如 samplerate / bitrate / width / filename / size / clock-rate）
+    pub key: String,
+    /// 元数据值
+    pub value: Bytes,
+}
+
+impl StreamMetaEntry {
+    /// 字符串值元数据
+    pub fn str(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: Bytes::from(value.into().into_bytes()),
+        }
+    }
+
+    /// 数值值元数据
+    pub fn num(key: impl Into<String>, value: u64) -> Self {
+        Self {
+            key: key.into(),
+            value: Bytes::from(value.to_string().into_bytes()),
+        }
+    }
+
+    /// 原始字节值元数据
+    pub fn bytes(key: impl Into<String>, value: Bytes) -> Self {
+        Self {
+            key: key.into(),
+            value,
+        }
+    }
+}
+
+/// 流开始帧：流协商（必须为流首帧）
+///
+/// metadata 常用约定（业界通用命名）：
+/// - 音视频：codec=opus/h264、samplerate=48000、channels=2、bitrate=128000、
+///   width=1920、height=1080、fps=30
+/// - 时间同步：clock-rate=48000（rtp_ts 的单位；无则 rtp_ts 未使用）
+/// - 文件传输：filename、size、mime
+/// - 自定义扩展：任意键值
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamOpenMsg {
+    /// 所属流的 ID
+    pub id: u64,
+    /// 流名称（数据帧不再携带，按 id 路由，省每帧字符串开销）
+    pub name: String,
+    /// 流元数据（音视频参数 / 文件信息 / 自定义扩展）
+    pub metadata: Vec<StreamMetaEntry>,
+}
+
+/// 流数据帧（名称仅在 StreamOpen 携带，数据帧按 id 路由）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StreamMsg {
+    /// 所属流的 ID
+    pub id: u64,
+    /// 帧序列号（单调递增，用于丢包检测和排序）
+    pub seq: u64,
+    /// 帧标志（见 stream_flags）
+    pub flags: u8,
+    /// 发送方墙钟时间戳（毫秒，用于时间对齐与延迟测量）
+    pub sender_ts: Timestamp,
+    /// 采样时间戳（0 = 未使用；单位由 StreamOpen.metadata 的 clock-rate 约定，
+    /// 音视频场景用于播放同步与抖动缓冲）
+    pub rtp_ts: u64,
+    /// 流数据
+    pub data: Bytes,
+}
+
+/// 流帧标志位
+pub mod stream_flags {
+    /// 关键帧（视频 I 帧 / 音频首包 / 文件头）：可独立解码，接收方可据此做快进/丢帧
+    pub const KEY_FRAME: u8 = 1 << 0;
+}
+
+/// 流结束帧（必须为流末帧；QUIC 上为流关闭前的最后一帧）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StreamEndMsg {
     /// 所属流的 ID
     pub id: u64,
+    /// 结束码（0 = 正常结束；非 0 = 异常 / 取消 / 业务终止）
+    pub code: u16,
+    /// 结束原因（可选）
+    pub message: Option<String>,
+    /// 结束元数据（trailers 风格：统计信息、校验和、对端确认等）
+    pub metadata: Vec<StreamMetaEntry>,
 }
 
 /// RPC 请求载荷
@@ -60,21 +145,6 @@ pub struct EventMsg {
     /// 事件名称
     pub name: String,
     /// 事件数据
-    pub data: Bytes,
-}
-
-/// 流数据载荷
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct StreamMsg {
-    /// 所属流的 ID
-    pub id: u64,
-    /// 流名称
-    pub name: String,
-    /// 帧序列号（单调递增，用于丢包检测和排序）
-    pub seq: u64,
-    /// 发送方时间戳（毫秒，用于时间对齐）
-    pub sender_ts: Timestamp,
-    /// 流数据
     pub data: Bytes,
 }
 
