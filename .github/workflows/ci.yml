@@ -21,7 +21,7 @@ jobs:
       - name: Format check
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --exclude echostream-python --exclude echostream-node --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude echostream-python --exclude echostream-node --all-targets --all-features -- -D warnings
       - name: 单元与集成测试
         run: cargo test -p echostream-proto -p echostream-core -p echostream-transport
       - name: 示例冒烟（RPC/Event/Stream 端到端）

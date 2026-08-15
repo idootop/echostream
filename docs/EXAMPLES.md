@@ -10,7 +10,7 @@
 |------|------|------|
 | simple_rpc | RPC / Event / Stream 三种模式端到端（声明式宏） | cargo run -p echostream --example simple_rpc |
 | bidi | 服务端主动调用客户端、事件监听、中间件、生命周期钩子 | cargo run -p echostream --example bidi |
-| discovery | mDNS 服务发现（ServiceInfo + Discovery）与连接 | cargo run -p echostream --example discovery |
+| discovery | mDNS 服务发现（ServiceInfo + Discovery）与连接 | cargo run -p echostream-discovery --example discovery |
 | plugin_stack | 插件栈：认证 / 重连 / RPC 重试 / 日志 全链路 | cargo run -p echostream --example plugin_stack |
 | middleware_stack | 中间件栈：超时 / 错误归一化 / 转换 / 指标 / 心跳 全链路 | cargo run -p echostream --example middleware_stack |
 | handler_forms | 处理器签名全形态（session 可省略 / 无参数）端到端 | cargo run -p echostream --example handler_forms |

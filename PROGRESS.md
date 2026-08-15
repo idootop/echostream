@@ -138,9 +138,12 @@
       - Node/Python 绑定补 create_stream_with_metadata（跨端 metadata 流能力）
 - [x] **discovery 移入 extensions + facade feature 惯例**：echostream-discovery 归入 extensions/（与 file/av
       同类：场景工具，无宿主契约）；facade 按业界惯例（tokio/axum）做 feature 门控重导出 ——
-      `file`（echostream::file）/ `av`（echostream::av）可选、`discovery` 保持默认；
-      全 feature 构建 + 36 测试 + clippy/fmt 全绿
-- [ ] **Step 10 PROGRESS 收尾 + 最终提交**
+      `file`（echostream::file）/ `av`（echostream::av）可选
+- [x] **discovery 改可选**：facade default 仅 `derive`（discovery 需显式启用，默认构建更轻）；
+      示例移入扩展包（cargo run -p echostream-discovery --example discovery）；
+      CI clippy 加 --all-features 保证示例全覆盖；默认/全 feature 双模式 clippy 全绿
+- [x] **Step 10 PROGRESS 收尾 + 最终提交**：P7 全部完成 —— 36 tests / 9 示例（含 file_transfer、av_stream、
+      discovery）/ clippy（默认 + all-features）0 error / fmt clean / 跨端矩阵 6/6
 
 ## 设计决策记录
 

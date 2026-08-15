@@ -81,7 +81,7 @@ await client.connect();
 const sum = await client.request("add", 10, 20);   // 30，自动编解码
 ```
 
-## 服务发现（mDNS）
+## 服务发现（mDNS，可选 feature `discovery`）
 
 ```rust
 use echostream::prelude::*;

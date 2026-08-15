@@ -387,11 +387,13 @@ dependencies = [
 name = "echostream-discovery"
 version = "0.1.0"
 dependencies = [
+ "echostream",
  "echostream-proto",
  "if-addrs",
  "mdns-sd",
  "tokio",
  "tokio-stream",
+ "tracing-subscriber",
 ]
 
 [[package]]
