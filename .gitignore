@@ -17,6 +17,8 @@ dist/
 package-lock.json
 
 # 构建产物
+bindings/python/python/echostream/*.so
+!bindings/python/python/echostream/_native.so
 bindings/node/echostream-node.node
 bindings/wasm/node/echostream_wasm_bg.wasm
 bindings/web/wasm/echostream_wasm_bg.wasm
