@@ -1,14 +1,14 @@
 // EchoStream 跨端矩阵：Node 客户端（连接 Rust / Python 服务端）
-// 用法：node test/cross_client.mjs [地址]（默认 127.0.0.1:5110）
+// 用法：node dist/test/cross_client.js [地址]（默认 127.0.0.1:5110）
 import { connect } from "../index.js";
 
-async function main() {
+async function main(): Promise<void> {
   const addr = process.argv[2] || "127.0.0.1:5110";
   const client = await connect(addr);
   console.log("[client] 已连接");
 
   // RPC：add(10, 20) -> 30（自动编解码）
-  const sum = await client.request("add", 10, 20);
+  const sum = await client.request<number>("add", 10, 20);
   console.log(`add(10, 20) = ${sum}`);
   if (sum !== 30) throw new Error(`期望 30，实际 ${sum}`);
 

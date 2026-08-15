@@ -74,7 +74,7 @@ builder.add_rpc("add", lambda a, b: a + b)
 ### Web（浏览器）
 
 ```js
-import { EchoStream } from "./echostream.js";
+import { EchoStream } from "./dist/echostream.js";
 
 const client = new EchoStream("ws://192.168.1.100:8081");
 await client.connect();
@@ -89,8 +89,8 @@ const sum = await client.request("add", 10, 20); // 30
 ## 测试
 
 ```bash
-node bindings/node/test/codec.test.mjs      # Node 纯 JS 编解码 vs WASM 交叉验证
-node bindings/node/test/server.test.mjs     # Node server + client 闭环
+pnpm --dir bindings/node build && node bindings/node/dist/test/codec.test.js   # Node 纯 JS 编解码 vs WASM 交叉验证
+pnpm --dir bindings/node build && node bindings/node/dist/test/server.test.js   # Node server + client 闭环
 python3 bindings/python/tests/test_e2e.py   # Python server + client 闭环
-node scripts/cross_e2e.mjs                  # 跨端矩阵：Rust ↔ Node ↔ Python 6 组合
+pnpm --dir scripts build && node scripts/dist/cross_e2e.js   # 跨端矩阵：Rust ↔ Node ↔ Python 6 组合
 ```

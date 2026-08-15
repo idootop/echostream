@@ -6,8 +6,8 @@
 - [ ] `cargo build` 通过；CI 全绿（fmt / clippy / 示例冒烟 / WASM 验证 / Node E2E）
 - [ ] 回归：`cargo run -p echostream --example simple_rpc` 输出"全部完成"
 - [ ] `node bindings/web/echostream.test.mjs`、`node bindings/web/client_core.test.mjs` 通过
-- [ ] `node bindings/node/test/server.test.mjs`、`node bindings/python/tests/test_e2e.py` 通过
-- [ ] 跨端矩阵 `node scripts/cross_e2e.mjs` 6 组合全 PASS
+- [ ] `pnpm --dir bindings/node build && node bindings/node/dist/test/server.test.js`、`node bindings/python/tests/test_e2e.py` 通过
+- [ ] 跨端矩阵 `node scripts/dist/cross_e2e.js` 6 组合全 PASS（需先 `pnpm --dir scripts build`）
 - [ ] 版本号统一：workspace `Cargo.toml`（0.1.0）、`bindings/node/package.json`、`bindings/python/pyproject.toml`
 
 ## 1. crates.io 发布（依赖顺序严格执行）

@@ -48,12 +48,18 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.106 --locked
           wasm-bindgen --target nodejs --out-dir bindings/wasm/node target/wasm32-unknown-unknown/release/echostream_wasm.wasm
           wasm-bindgen --target web --out-dir bindings/web/wasm target/wasm32-unknown-unknown/release/echostream_wasm.wasm
+      - name: 构建 TypeScript（pnpm + tsdown，仅 ESM）
+        run: |
+          pnpm install --dir bindings/node --frozen-lockfile
+          pnpm install --dir bindings/web --frozen-lockfile
+          pnpm --dir bindings/node build
+          pnpm --dir bindings/web build
       - name: 编解码交叉验证
-        run: node bindings/web/echostream.test.mjs
+        run: node bindings/web/dist/test/echostream.test.js
       - name: 客户端状态机验证
-        run: node bindings/web/client_core.test.mjs
+        run: node bindings/web/dist/test/client_core.test.js
       - name: Node 纯 JS 编解码 vs WASM 交叉验证
-        run: node bindings/node/test/codec.test.mjs
+        run: node bindings/node/dist/test/codec.test.js
 
   bindings:
     name: Node.js binding 端到端
@@ -69,7 +75,13 @@ jobs:
         run: |
           cargo build -p echostream-node --release
           cp target/release/libechostream_node.so bindings/node/echostream-node.node
+      - name: 构建 TypeScript（pnpm + tsdown，仅 ESM）
+        run: |
+          pnpm install --dir bindings/node --frozen-lockfile
+          pnpm install --dir bindings/web --frozen-lockfile
+          pnpm --dir bindings/node build
+          pnpm --dir bindings/web build
       - name: 端到端测试（server + client 闭环，自动编解码 DX）
-        run: node bindings/node/test/server.test.mjs
+        run: node bindings/node/dist/test/server.test.js
       - name: 浏览器 SDK 端到端（Rust WS 服务端）
-        run: node bindings/web/e2e.sdk.test.mjs
+        run: node bindings/web/dist/test/e2e.sdk.test.js

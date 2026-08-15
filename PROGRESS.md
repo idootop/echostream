@@ -82,6 +82,13 @@
 - [x] **Step 5 Router 运行时管理**：add_* 返回 Token，remove_rpc/event/stream/middleware 按 token 精确移除；
       rpc_names/event_names/stream_names/middleware_names 注册表查询；Server/Client 暴露 router() + 运行时注册/移除；
       Server 钩子支持运行时注册与取消注册（add/remove_on_*）；router_test 覆盖链序/拦截/改名/生命周期（16 组全绿）
+- [x] **TS 全量 TypeScript 化**（pnpm + tsdown，仅 ESM 包）：
+      - bindings/node：index/postcard/examples/tests 全部 TS（request<T>/onRpc<TArgs,TResp>/recv<T> 泛型），
+        native.d.ts 声明原生模块；tsdown 构建 dist/（.js ESM + .d.ts），typecheck/test 全绿
+      - bindings/web：浏览器 SDK TS 化（EchoStream 泛型 + Schema 类型），tsdown 构建 dist/echostream.js，
+        wasm 胶水外部化并复制 dist/wasm，HTML 引用更新；编解码/状态机/e2e 测试全绿
+      - scripts：cross_e2e.ts TS 化；CI 更新为 pnpm 安装 + tsdown 构建 + dist 路径测试
+      - .gitignore 增加 node_modules/ dist/（pnpm 管理，package-lock.json 忽略）
 - [ ] **Step 6 新中间件**：timeout / error / transform（规划落地）
 - [ ] **Step 7 新插件**：metrics / heartbeat（规划落地）
 - [ ] **Step 8 文档同步**：README / ARCHITECTURE / EXAMPLES / plugins / middlewares

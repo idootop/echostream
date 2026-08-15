@@ -70,7 +70,7 @@ total = client.request("add", 10, 20)              # 30，自动编解码
 ```
 
 ```js
-// 浏览器：import { EchoStream } from "./echostream.js";
+// 浏览器：import { EchoStream } from "./dist/echostream.js";
 const client = new EchoStream("ws://192.168.1.100:8081");
 await client.connect();
 const sum = await client.request("add", 10, 20);   // 30，自动编解码
@@ -134,7 +134,7 @@ cargo build --workspace                        # 编译
 cargo test -p echostream-proto -p echostream-core -p echostream-transport   # 测试
 cargo run -p echostream --example simple_rpc   # 端到端示例
 cargo run -p echostream --example bench --release   # 基准测试
-node scripts/cross_e2e.mjs                     # 跨端矩阵：Rust ↔ Node ↔ Python
+pnpm --dir scripts build && node scripts/dist/cross_e2e.js   # 跨端矩阵：Rust ↔ Node ↔ Python
 ```
 
 ## License

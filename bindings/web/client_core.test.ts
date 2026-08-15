@@ -1,18 +1,20 @@
 // ClientCore 状态机交叉验证：RPC 匹配/事件路由/服务端主动调用
 // 使用 Node 加载 wasm 产物，模拟网络层直接喂帧
+// 运行：node dist/test/client_core.test.js
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const wasm = require("../wasm/node/echostream_wasm.js");
+// 类型按源码布局解析；运行时按 dist 布局（dist/test/ 深一层）解析
+const wasm = require(new URL("../../../wasm/node/echostream_wasm.js", import.meta.url).pathname) as typeof import("../wasm/node/echostream_wasm.js");
 const { ClientCoreHandle, encode_payload, encode_frame, decode_message, decode_i64, decode_string } = wasm;
 
 const core = new ClientCoreHandle();
 console.log("✅ 状态机创建");
 
 // ===== RPC 请求/响应匹配 =====
-let respValue = null;
-const reqFrame = core.request("add", encode_payload([10, 20]), (data) => {
+let respValue: number | null = null;
+const reqFrame = core.request("add", encode_payload([10, 20]), (data: Uint8Array) => {
   respValue = decode_i64(data); // i64 ZigZag 约定
 });
 const req = decode_message(reqFrame.subarray(4));
@@ -29,8 +31,8 @@ assert.equal(respValue, 30);
 console.log("✅ RPC 响应匹配（错误 id 忽略 + 正确 id 触发）");
 
 // ===== 事件路由 =====
-const events = [];
-core.on_event("hello", (name, data) => {
+const events: [string, string][] = [];
+core.on_event("hello", (name: string, data: Uint8Array) => {
   events.push([name, decode_string(data)]);
 });
 core.handle_inbound(encode_frame({ type: "event", id: 1n, name: "hello", data: encode_payload("world") }));
@@ -38,7 +40,7 @@ assert.deepEqual(events, [["hello", "world"]]);
 console.log("✅ 事件路由到监听器");
 
 // ===== 服务端主动调用（同步响应） =====
-core.on_rpc("ping", (name, data) => {
+core.on_rpc("ping", (name: string, data: Uint8Array) => {
   return encode_payload("pong:" + decode_string(data));
 });
 const outbound = core.handle_inbound(encode_frame({ type: "request", id: 7n, name: "ping", data: encode_payload("hi") }));

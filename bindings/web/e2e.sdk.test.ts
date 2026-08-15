@@ -1,15 +1,14 @@
 // EchoStream 浏览器 SDK 端到端测试（Node 环境模拟浏览器网络层）
 //
 // 启动 Rust WebSocket 服务端（ws_chat_server），用 Node 内置 WebSocket 驱动
-// 浏览器 SDK（bindings/web/echostream.js），验证新 DX 全链路：
-// RPC 自动编解码 / 事件 / 出站流。
+// 浏览器 SDK（bindings/web），验证新 DX 全链路：RPC 自动编解码 / 事件 / 出站流。
 //
-// 运行：node bindings/web/e2e.sdk.test.mjs
-
+// 运行：node dist/test/e2e.sdk.test.js
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
@@ -21,10 +20,10 @@ const server = spawn(
   { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
 );
 let serverLog = "";
-server.stdout.on("data", (d) => { serverLog += d; });
-server.stderr.on("data", (d) => { serverLog += d; });
+server.stdout.on("data", (d: Buffer) => { serverLog += d; });
+server.stderr.on("data", (d: Buffer) => { serverLog += d; });
 
-function waitFor(key, timeoutMs = 30000) {
+function waitFor(key: string, timeoutMs = 30000): Promise<void> {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const timer = setInterval(() => {
@@ -44,16 +43,15 @@ try {
   // 浏览器 SDK（Node 环境注入 wasm 字节，WebSocket 用 Node 内置实现）
   const { EchoStream } = await import("./echostream.js");
   const wasmBytes = new Uint8Array(
-    await (await import("node:fs/promises")).readFile(
-      new URL("./wasm/echostream_wasm_bg.wasm", import.meta.url),
-    ),
+    // dist/test 相对 dist/wasm 的路径（wasm 在构建时复制到 dist/wasm）
+    await readFile(new URL("../wasm/echostream_wasm_bg.wasm", import.meta.url)),
   );
   const client = new EchoStream("ws://127.0.0.1:8081", { wasmModule: wasmBytes });
   await client.connect();
   console.log("✅ 已连接（自动编解码 DX）");
 
   // RPC：多参数自动元组 + 响应自动解码
-  const sum = await client.request("add", 10, 20);
+  const sum = await client.request<number>("add", 10, 20);
   assert.equal(sum, 30);
   console.log("✅ RPC add(10, 20) =", sum, "（自动编解码）");
 

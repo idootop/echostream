@@ -29,8 +29,8 @@
 
 | 文件 | 内容 | 运行 |
 |------|------|------|
-| server.mjs | 服务端：RPC / 事件 / 流（自动编解码 DX） | node bindings/node/examples/server.mjs |
-| client.mjs | 客户端：请求 / 事件 / 流（需先启动服务端） | node bindings/node/examples/client.mjs |
+| server.ts | 服务端：RPC / 事件 / 流（自动编解码 DX，TypeScript） | pnpm --dir bindings/node build && node bindings/node/dist/examples/server.js |
+| client.ts | 客户端：请求 / 事件 / 流（需先启动服务端） | node bindings/node/dist/examples/client.js |
 
 ## Python 示例（bindings/python/examples/）
 
@@ -49,5 +49,5 @@
 ## 跨端矩阵
 
 ```bash
-node scripts/cross_e2e.mjs    # Rust ↔ Node ↔ Python 6 组合交叉验证
+pnpm --dir scripts build && node scripts/dist/cross_e2e.js    # Rust ↔ Node ↔ Python 6 组合交叉验证
 ```

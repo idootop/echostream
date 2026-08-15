@@ -4,9 +4,8 @@
 //       校验 add(10, 20) = 30、事件、3 帧流 -> 终止服务端。
 // 端口 5110-5115。
 //
-// 用法：node scripts/cross_e2e.mjs
+// 用法：pnpm -C scripts build && node scripts/dist/cross_e2e.js
 // 前置：cargo build -p echostream --release --example e2e_peer（脚本自动完成）
-
 import { spawn, execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,8 +17,9 @@ const root = path.resolve(__dirname, "..");
 const LOG_DIR = path.join(os.tmpdir(), "echostream-cross-e2e");
 
 const RUST_PEER = path.join(root, "target/release/examples/e2e_peer");
-const NODE_SERVER = path.join(root, "bindings/node/test/cross_server.mjs");
-const NODE_CLIENT = path.join(root, "bindings/node/test/cross_client.mjs");
+// Node 对端为 tsdown 构建产物（ESM）
+const NODE_SERVER = path.join(root, "bindings/node/dist/test/cross_server.js");
+const NODE_CLIENT = path.join(root, "bindings/node/dist/test/cross_client.js");
 const PY_SERVER = path.join(root, "bindings/python/tests/cross_server.py");
 const PY_CLIENT = path.join(root, "bindings/python/tests/cross_client.py");
 
@@ -31,20 +31,27 @@ if (!fs.existsSync(RUST_PEER)) {
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-async function waitLog(logFile, timeoutMs, key) {
+async function waitLog(logFile: string, timeoutMs: number, key: string): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
       if (fs.readFileSync(logFile, "utf8").includes(key)) return true;
-    } catch (_) {}
+    } catch (_) { /* 日志尚未创建 */ }
     await sleep(100);
   }
   return false;
 }
 
-async function runCombo(name, port, serverCmd, clientCmd) {
+interface Combo {
+  name: string;
+  port: number;
+  server: string;
+  client: string;
+}
+
+async function runCombo(name: string, port: number, serverCmd: string, clientCmd: string): Promise<boolean> {
   const slog = path.join(LOG_DIR, name + ".server.log");
   const clog = path.join(LOG_DIR, name + ".client.log");
   fs.writeFileSync(slog, "");
@@ -84,24 +91,24 @@ async function runCombo(name, port, serverCmd, clientCmd) {
     console.log("✅ PASS [" + name + "]");
   } else {
     console.error("❌ FAIL [" + name + "]（client exit=" + (clientOk ? 0 : "error") + "）");
-    try { console.error(fs.readFileSync(clog, "utf8").slice(0, 2000)); } catch (_) {}
+    try { console.error(fs.readFileSync(clog, "utf8").slice(0, 2000)); } catch (_) { /* 无客户端日志 */ }
     console.error(sLog.slice(0, 3000));
   }
   return ok;
 }
 
-const combos = [
-  ["rust-server_node-client", 5110, '"' + RUST_PEER + '" --server --addr 127.0.0.1:5110', 'node "' + NODE_CLIENT + '" 127.0.0.1:5110'],
-  ["node-server_rust-client", 5111, 'node "' + NODE_SERVER + '" 5111', '"' + RUST_PEER + '" --client --addr 127.0.0.1:5111'],
-  ["rust-server_python-client", 5112, '"' + RUST_PEER + '" --server --addr 127.0.0.1:5112', 'python3 "' + PY_CLIENT + '" 127.0.0.1:5112'],
-  ["python-server_rust-client", 5113, 'python3 "' + PY_SERVER + '" 5113', '"' + RUST_PEER + '" --client --addr 127.0.0.1:5113'],
-  ["node-server_python-client", 5114, 'node "' + NODE_SERVER + '" 5114', 'python3 "' + PY_CLIENT + '" 127.0.0.1:5114'],
-  ["python-server_node-client", 5115, 'python3 "' + PY_SERVER + '" 5115', 'node "' + NODE_CLIENT + '" 127.0.0.1:5115'],
+const combos: Combo[] = [
+  { name: "rust-server_node-client", port: 5110, server: '"' + RUST_PEER + '" --server --addr 127.0.0.1:5110', client: 'node "' + NODE_CLIENT + '" 127.0.0.1:5110' },
+  { name: "node-server_rust-client", port: 5111, server: 'node "' + NODE_SERVER + '" 5111', client: '"' + RUST_PEER + '" --client --addr 127.0.0.1:5111' },
+  { name: "rust-server_python-client", port: 5112, server: '"' + RUST_PEER + '" --server --addr 127.0.0.1:5112', client: 'python3 "' + PY_CLIENT + '" 127.0.0.1:5112' },
+  { name: "python-server_rust-client", port: 5113, server: 'python3 "' + PY_SERVER + '" 5113', client: '"' + RUST_PEER + '" --client --addr 127.0.0.1:5113' },
+  { name: "node-server_python-client", port: 5114, server: 'node "' + NODE_SERVER + '" 5114', client: 'python3 "' + PY_CLIENT + '" 127.0.0.1:5114' },
+  { name: "python-server_node-client", port: 5115, server: 'python3 "' + PY_SERVER + '" 5115', client: 'node "' + NODE_CLIENT + '" 127.0.0.1:5115' },
 ];
 
 let pass = 0;
-const failed = [];
-for (const [name, port, server, client] of combos) {
+const failed: string[] = [];
+for (const { name, port, server, client } of combos) {
   if (await runCombo(name, port, server, client)) pass++;
   else failed.push(name);
 }

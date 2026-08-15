@@ -9,9 +9,22 @@
 // "string"|"bytes"|"f64"|"f32"|"list"|数组=元组|对象=结构体）。
 // 与 bindings/wasm 的 encode_payload/decode_payload 交叉验证保持一致。
 
+/** 基础 schema 类型（与 Rust 端 dynamic 解码约定一致） */
+export type PrimitiveSchema =
+  | "number" | "int" | "i64" | "bigint" | "u64" | "bool"
+  | "string" | "bytes" | "f64" | "f32";
+
+/** 显式解码 schema：字符串原语 / 数组=元组 / 对象=结构体 */
+export type Schema = PrimitiveSchema | "list" | "auto" | "json" | Schema[] | { [key: string]: Schema };
+
 // ======================== 编码 ========================
 
-export function encodePayload(value, schema) {
+/**
+ * 载荷编码：单值 / "list"（长度前缀列表）/ 对象 schema（结构体字段序）
+ * @param value 载荷值（undefined 视为空）
+ * @param schema 显式编码 schema（可选）
+ */
+export function encodePayload(value: unknown, schema?: Schema | "list"): Uint8Array {
   const w = new Writer();
   if (schema === "list") {
     if (!Array.isArray(value)) throw new Error("列表编码需要数组载荷");
@@ -22,7 +35,7 @@ export function encodePayload(value, schema) {
       throw new Error("结构体编码需要对象载荷");
     for (const key of Object.keys(schema)) {
       const fieldSchema = schema[key];
-      const fieldValue = value[key];
+      const fieldValue = (value as Record<string, unknown>)[key];
       if (fieldSchema === "list") {
         if (!Array.isArray(fieldValue)) throw new Error("列表编码需要数组载荷");
         w.varint(fieldValue.length);
@@ -38,25 +51,25 @@ export function encodePayload(value, schema) {
 }
 
 class Writer {
-  constructor() { this.bytes = new Uint8Array(0); }
+  bytes = new Uint8Array(0);
 
-  push(...bytes) {
+  push(...bytes: number[]): void {
     const out = new Uint8Array(this.bytes.length + bytes.length);
     out.set(this.bytes, 0);
     out.set(bytes, this.bytes.length);
     this.bytes = out;
   }
 
-  extend(data) {
+  extend(data: Uint8Array): void {
     const out = new Uint8Array(this.bytes.length + data.length);
     out.set(this.bytes, 0);
     out.set(data, this.bytes.length);
     this.bytes = out;
   }
 
-  varint(n) {
+  varint(n: number | bigint): void {
     let v = BigInt(n);
-    const out = [];
+    const out: number[] = [];
     while (v >= 0x80n) {
       out.push(Number((v & 0x7fn) | 0x80n));
       v >>= 7n;
@@ -65,7 +78,7 @@ class Writer {
     this.push(...out);
   }
 
-  value(v) {
+  value(v: unknown): void {
     if (v === null || v === undefined) return;
     if (typeof v === "boolean") { this.push(v ? 1 : 0); return; }
     if (typeof v === "number") {
@@ -102,7 +115,9 @@ class Writer {
       return;
     }
     if (typeof v === "object") {
-      for (const key of Object.keys(v)) this.value(v[key] === undefined ? null : v[key]);
+      for (const key of Object.keys(v as Record<string, unknown>)) {
+        this.value((v as Record<string, unknown>)[key] === undefined ? null : (v as Record<string, unknown>)[key]);
+      }
       return;
     }
     throw new Error("不支持的载荷类型: " + typeof v);
@@ -111,25 +126,33 @@ class Writer {
 
 // ======================== 解码 ========================
 
-export function decodePayload(bytes, schema) {
+/**
+ * 载荷解码：默认智能推断；传 schema 显式解码
+ * @param bytes 载荷字节（Uint8Array 或类数组）
+ * @param schema 显式 schema（可选）
+ * @returns 解码值（泛型 T 标注期望类型）
+ */
+export function decodePayload<T = unknown>(bytes: Uint8Array | number[], schema?: Schema): T {
   const r = new Reader(bytes);
   const v = schema === undefined || schema === "auto" || schema === "json"
     ? r.auto()
     : r.schema(schema);
   if (!r.eof()) throw new Error("载荷解码未消费完整: 剩余 " + r.remaining() + " 字节");
-  return v;
+  return v as T;
 }
 
 class Reader {
-  constructor(bytes) {
+  private bytes: Uint8Array;
+  private pos = 0;
+
+  constructor(bytes: Uint8Array | number[]) {
     this.bytes = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
-    this.pos = 0;
   }
 
-  eof() { return this.pos >= this.bytes.length; }
-  remaining() { return this.bytes.length - this.pos; }
+  eof(): boolean { return this.pos >= this.bytes.length; }
+  remaining(): number { return this.bytes.length - this.pos; }
 
-  varint() {
+  varint(): bigint {
     let result = 0n;
     let shift = 0n;
     for (;;) {
@@ -143,22 +166,22 @@ class Reader {
     return result;
   }
 
-  take(len) {
+  take(len: number): Uint8Array {
     if (this.pos + len > this.bytes.length) throw new Error("字节数据越界");
     const out = this.bytes.subarray(this.pos, this.pos + len);
     this.pos += len;
     return out;
   }
 
-  fromZigzag(v) { return BigInt.asIntN(64, (v >> 1n) ^ -(v & 1n)); }
+  fromZigzag(v: bigint): bigint { return BigInt.asIntN(64, (v >> 1n) ^ -(v & 1n)); }
 
-  number(v) {
+  number(v: bigint): number | bigint {
     const n = this.fromZigzag(v);
     return n >= BigInt(Number.MIN_SAFE_INTEGER) && n <= BigInt(Number.MAX_SAFE_INTEGER)
       ? Number(n) : n;
   }
 
-  schema(s) {
+  schema(s: Schema): unknown {
     if (typeof s === "string") {
       switch (s) {
         case "number": case "int": case "i64": return this.number(this.varint());
@@ -189,7 +212,7 @@ class Reader {
         }
         case "list": {
           const len = Number(this.varint());
-          const items = [];
+          const items: unknown[] = [];
           for (let i = 0; i < len; i++) items.push(this.auto());
           return items;
         }
@@ -197,12 +220,12 @@ class Reader {
       }
     }
     if (Array.isArray(s)) {
-      const items = [];
+      const items: unknown[] = [];
       for (const item of s) items.push(this.schema(item));
       return items;
     }
     if (typeof s === "object") {
-      const obj = {};
+      const obj: Record<string, unknown> = {};
       for (const key of Object.keys(s)) obj[key] = this.schema(s[key]);
       return obj;
     }
@@ -210,9 +233,9 @@ class Reader {
   }
 
   // 智能推断：字符串优先（与 Rust 端 auto 规则一致）
-  auto() {
+  auto(): unknown {
     if (this.eof()) return undefined;
-    const fields = [];
+    const fields: unknown[] = [];
     for (;;) {
       if (this.eof()) break;
       const start = this.pos;

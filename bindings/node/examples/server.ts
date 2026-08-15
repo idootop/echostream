@@ -1,27 +1,27 @@
-// EchoStream Node.js 示例：服务端（自动编解码 DX）
-// 运行：node examples/server.mjs（另开终端运行 examples/client.mjs）
+// EchoStream Node.js 示例：服务端（自动编解码 DX，TypeScript）
+// 运行：node dist/examples/server.js（另开终端运行 dist/examples/client.js）
 import { ServerBuilder } from "../index.js";
 
-async function main() {
+async function main(): Promise<void> {
   const builder = new ServerBuilder();
   builder.bind("0.0.0.0:5101");
 
-  // RPC：参数自动解码展开，返回值自动编码
-  builder.addRpc("add", async (a, b) => {
+  // RPC：参数自动解码展开（泛型元组标注参数与响应类型），返回值自动编码
+  builder.addRpc<[number, number], number>("add", async (a, b) => {
     console.log(`[server] add(${a}, ${b})`);
     return a + b;
   });
 
   // 事件：载荷自动解码
-  builder.addEvent("hello", (data) => {
+  builder.addEvent<[string]>("hello", (data) => {
     console.log(`[server] 收到事件: ${data}`);
   });
 
-  // 流：receiver.recv() 自动解码帧
+  // 流：receiver.recv() 自动解码帧（泛型标注帧类型）
   builder.addStream("chat", async (receiver) => {
     let count = 0;
     while (true) {
-      const frame = await receiver.recv();
+      const frame = await receiver.recv<string>();
       if (frame === null) break;
       count++;
       console.log(`[server] 流帧 #${count}: ${frame}`);

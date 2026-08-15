@@ -13,7 +13,7 @@ JS 只负责网络层 —— 与 Rust 服务端的线缆格式单一事实来源
 
 ```html
 <script type="module">
-  import { EchoStream } from "./echostream.js";
+  import { EchoStream } from "./dist/echostream.js";
 
   const client = new EchoStream("ws://192.168.1.100:8081");  // 或 https://host:4433
   await client.connect();
@@ -57,7 +57,7 @@ JS 只负责网络层 —— 与 Rust 服务端的线缆格式单一事实来源
 
 ## 文件
 
-- `echostream.js` — SDK 入口（自动编解码 RPC / Event / Stream / 双向 / 入站流）
+- `echostream.ts` — SDK 入口源码（tsdown 构建到 `dist/echostream.js`）
 - `wasm/` — Rust 编译的协议核心（编解码 + 状态机）
 - `index.html` / `e2e.html` — 浏览器 demo 与 E2E 页面
 - `echostream.test.mjs` / `client_core.test.mjs` — 编解码与状态机交叉验证

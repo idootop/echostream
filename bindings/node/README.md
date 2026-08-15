@@ -66,6 +66,7 @@ npm run test:cross       # 跨端矩阵（需 Rust/Python 对端）
 ## 示例
 
 ```bash
-node examples/server.mjs   # 终端 1
-node examples/client.mjs   # 终端 2
+pnpm build                    # 先构建 TypeScript（tsdown -> dist/）
+node dist/examples/server.js   # 终端 1
+node dist/examples/client.js   # 终端 2
 ```

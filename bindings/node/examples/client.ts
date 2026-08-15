@@ -1,13 +1,13 @@
-// EchoStream Node.js 示例：客户端（自动编解码 DX）
-// 运行：node examples/client.mjs（需先启动 examples/server.mjs）
+// EchoStream Node.js 示例：客户端（自动编解码 DX，TypeScript）
+// 运行：node dist/examples/client.js（需先启动 dist/examples/server.js）
 import { connect } from "../index.js";
 
-async function main() {
+async function main(): Promise<void> {
   const client = await connect("127.0.0.1:5101");
   console.log("[client] 已连接");
 
-  // RPC：多参数自动元组，响应自动解码
-  const sum = await client.request("add", 10, 20);
+  // RPC：多参数自动元组，响应自动解码（泛型标注响应类型）
+  const sum = await client.request<number>("add", 10, 20);
   console.log(`[client] add(10, 20) = ${sum}`);
 
   // 事件：自动编码

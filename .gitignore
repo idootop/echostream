@@ -10,6 +10,12 @@ temp
 __pycache__/
 *.pyc
 
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+package-lock.json
+
 # 构建产物
 bindings/node/echostream-node.node
 bindings/wasm/node/echostream_wasm_bg.wasm

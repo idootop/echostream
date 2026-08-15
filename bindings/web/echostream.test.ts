@@ -1,14 +1,19 @@
 // EchoStream WASM 编解码交叉验证
 // 基准字节来自 Rust 侧（echostream-proto::dynamic + postcard）
+// 运行：node dist/test/echostream.test.js
 import assert from "node:assert/strict";
-import wasm from "../wasm/node/echostream_wasm.js";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+// 类型按源码布局解析；运行时按 dist 布局（dist/test/ 深一层）解析
+const wasm = require(new URL("../../../wasm/node/echostream_wasm.js", import.meta.url).pathname) as typeof import("../wasm/node/echostream_wasm.js");
 
 const {
   encode_payload, decode_payload, encode_message, decode_message, encode_frame,
   decode_u64, decode_i64, decode_string, decode_bytes, encode_i64,
 } = wasm;
 
-const hex = (bytes) => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join(" ");
+const hex = (bytes: Uint8Array): string => Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join(" ");
 
 // ===== 载荷编码（i64 ZigZag 跨端约定：10 -> 0x14） =====
 assert.equal(hex(encode_payload("hello")), "05 68 65 6c 6c 6f");
@@ -22,10 +27,10 @@ assert.equal(hex(encode_payload({ a: 1, b: "x" })), "02 01 78"); // 结构体字
 assert.equal(hex(encode_payload(new Uint8Array([1, 2]))), "02 01 02"); // 字节长度前缀
 
 // ===== 载荷解码（智能推断 + schema） =====
-assert.equal(decode_payload(encode_payload(30)), 30);
-assert.equal(decode_payload(encode_payload("hello")), "hello");
-assert.equal(decode_payload(encode_payload(-7)), -7);
-assert.deepEqual(decode_payload(encode_payload([10, 20])), [10, 20]);
+assert.equal(decode_payload(encode_payload(30), undefined), 30);
+assert.equal(decode_payload(encode_payload("hello"), undefined), "hello");
+assert.equal(decode_payload(encode_payload(-7), undefined), -7);
+assert.deepEqual(decode_payload(encode_payload([10, 20]), undefined), [10, 20]);
 // 结构体歧义场景（数字+字符串字段）：显式 schema 精确解码
 assert.deepEqual(
   decode_payload(encode_payload({ a: 1, b: "x" }), { a: "number", b: "string" }),
@@ -37,12 +42,12 @@ assert.equal(decode_payload(encode_payload(true), "bool"), true);
 assert.equal(decode_payload(encode_payload(10n), "u64"), 10);
 assert.equal(decode_payload(encode_payload(12345678901234567890n), "u64"), 12345678901234567890n); // BigInt -> u64
 // 字节
-const bytes = decode_payload(encode_payload(new Uint8Array([0xff, 0xfe]))); // 非法 UTF-8 -> 字节
+const bytes = decode_payload(encode_payload(new Uint8Array([0xff, 0xfe])), undefined); // 非法 UTF-8 -> 字节
 assert.ok(bytes instanceof Uint8Array && bytes[0] === 0xff && bytes[1] === 0xfe);
 // 列表（长度前缀）
 assert.deepEqual(decode_payload(encode_payload(0), "list"), []);
 // 空载荷
-assert.equal(decode_payload(new Uint8Array(0)), undefined);
+assert.equal(decode_payload(new Uint8Array(0), undefined), undefined);
 
 // ===== 编解码原语（兼容） =====
 assert.equal(hex(encode_i64(10n)), "14");

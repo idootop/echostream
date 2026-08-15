@@ -1,17 +1,24 @@
-// Node 纯 JS 编解码（postcard.js）与 WASM 编解码（bindings/wasm）交叉验证
+// Node 纯 JS 编解码（postcard.ts）与 WASM 编解码（bindings/wasm）交叉验证
 // 保证两套实现字节级一致，是跨语言自动编解码一致性的基石。
+// 运行：node dist/test/codec.test.js
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import type { Schema } from "../postcard.js";
 import { encodePayload, decodePayload } from "../postcard.js";
 
 const require = createRequire(import.meta.url);
-const wasm = require("../../wasm/node/echostream_wasm.js");
+// wasm-bindgen（nodejs target）产物：CommonJS 兼容，编译期由同名 .d.ts 提供类型
+// 注意：dist 布局比源码深一层（dist/test/），跨包引用按 dist 布局解析
+const wasm = require(new URL("../../../wasm/node/echostream_wasm.js", import.meta.url).pathname) as {
+  encode_payload(value: unknown): Uint8Array;
+  decode_payload(bytes: Uint8Array | number[], schema?: unknown): unknown;
+};
 
-const hex = (b) => Buffer.from(b).toString("hex");
-const toBytes = (v) => (v instanceof Uint8Array ? v : Uint8Array.from(v));
+const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
+const toBytes = (v: unknown): Uint8Array => (v instanceof Uint8Array ? v : Uint8Array.from(v as number[]));
 
 // ===== 编码字节一致性（JS codec vs WASM codec） =====
-const cases = [
+const cases: [string, unknown][] = [
   ["整数", 10],
   ["负数", -7],
   ["浮点", 1.5],
@@ -38,7 +45,7 @@ for (const [label, value] of cases) {
 }
 
 // ===== 解码一致性（智能推断 + schema） =====
-const decodeCases = [
+const decodeCases: [unknown, unknown, Schema?][] = [
   [30, 30],
   ["hello", "hello"],
   [-7, -7],
@@ -52,7 +59,7 @@ for (const [value, expected, schema] of decodeCases) {
   const bytes = encodePayload(value);
   const js = decodePayload(bytes, schema);
   assert.deepEqual(js, expected, `解码不一致: ${String(value)}`);
-  const wm = wasm.decode_payload(toBytes(bytes), schema || undefined);
+  const wm = wasm.decode_payload(toBytes(bytes), schema);
   assert.deepEqual(wm, expected, `WASM 解码不一致: ${String(value)}`);
   console.log(`✅ 解码一致 [${String(value)}] -> ${JSON.stringify(expected)}`);
 }

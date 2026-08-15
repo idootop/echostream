@@ -1,0 +1,26 @@
+{
+  "name": "echostream-web",
+  "version": "0.1.0",
+  "description": "EchoStream 浏览器 SDK — 自动编解码、双传输（WebSocket / WebTransport）",
+  "type": "module",
+  "main": "dist/echostream.js",
+  "types": "dist/echostream.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/echostream.d.ts",
+      "default": "./dist/echostream.js"
+    }
+  },
+  "license": "MIT",
+  "files": ["dist", "wasm", "README.md"],
+  "scripts": {
+    "build": "tsdown && cp -r wasm dist/wasm",
+    "typecheck": "tsc --noEmit",
+    "test": "node dist/test/echostream.test.js && node dist/test/client_core.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2"
+  }
+}
