@@ -123,6 +123,8 @@
       （中间件可看元数据拦截）；ClientCore 记录流元数据/结束信息（stream_metadata/stream_end 查询 +
       remove_stream_state 清理）；WASM/SDK/Node/Python/ws/web 全端同步（metadata 查询、结束信息、off 能力）；
       handler_forms 演示音视频/文件元数据协商与结束码（code=7 "client cancelled"）；35 测试全绿
+- [x] **跨端矩阵回归**：Rust e2e_peer 重建（新协议）后 6/6 全 PASS；README/ARCHITECTURE 通信模型
+      更新为流三帧协议描述；fmt/clippy/test 全绿
 - [ ] **Step 10 PROGRESS 收尾 + 最终提交**
 
 ## 设计决策记录

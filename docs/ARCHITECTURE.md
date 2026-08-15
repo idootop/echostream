@@ -48,6 +48,9 @@
 - **RPC 复用通道**：默认长连接双向流按 id 多路复用（高频小请求性能最优，通道开启标记为保留方法名
   $channel）；载荷 >64KiB 自动切独立流；连接池（pool(n)）多连接分摊流控窗口并跨核扩展
 - **事件复用通道**：长连接单向流批量帧（可靠）；数据报（不可靠，吞吐最高）
+- **流三帧协议**：StreamOpen（名称 + 可扩展元数据协商，如音视频参数 / 文件信息 / clock-rate）→
+  StreamMsg（按 id 路由的数据帧，核心仅传输语义）→ StreamEnd（结束码 + 原因 + trailers）；
+  采样时钟 / 关键帧等上层语义由上层插件在载荷内实现，核心协议稳定极简（gRPC headers/messages/trailers 同构）
 - **自动编解码**：proto::dynamic 定义跨语言载荷约定（i64 ZigZag 等），
   Rust derive / WASM / Node postcard.js / Python postcard.py 四端实现一致，字节级交叉验证
 - **扩展机制**：中间件 = 数据面（消息拦截/修改）；插件 = 控制面（生命周期/配置打包）
