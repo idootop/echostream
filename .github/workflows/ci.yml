@@ -42,7 +42,7 @@ jobs:
         with:
           version: 9
           run_install: false
-          cache: pnpm
+          cache: true
           cache_dependency_path: |
             bindings/node/pnpm-lock.yaml
             bindings/web/pnpm-lock.yaml
@@ -80,7 +80,7 @@ jobs:
         with:
           version: 9
           run_install: false
-          cache: pnpm
+          cache: true
           cache_dependency_path: |
             bindings/node/pnpm-lock.yaml
             bindings/web/pnpm-lock.yaml
